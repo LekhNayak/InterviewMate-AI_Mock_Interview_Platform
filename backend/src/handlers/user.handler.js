@@ -4,6 +4,7 @@ const sendEmail = require('../config/mailer');
 const { validateSignUpData } = require('../utils/validate');
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
+const { cookieOptions, clearCookieOptions, AUTH_COOKIE_MAX_AGE } = require('../config/cookie');
 
 const requestOtp = async (req, res) => {
     try {
@@ -49,12 +50,7 @@ const signup = async (req, res) => {
         const token = await newUser.getJWT();
 
         // ✅ Store JWT inside httpOnly cookie
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // works locally too
-            sameSite: 'none',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
+        res.cookie('token', token, { ...cookieOptions, maxAge: AUTH_COOKIE_MAX_AGE });
 
         res.status(201).json({
             success: true,
@@ -97,12 +93,7 @@ const login = async (req, res) => {
         }
 
         const token = await user.getJWT();
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        });
+        res.cookie('token', token, { ...cookieOptions, maxAge: AUTH_COOKIE_MAX_AGE });
 
         return res.status(200).json({
             success: true,
@@ -226,7 +217,7 @@ const updateProfile = async (req, res) => {
 
 const logout = async (req, res) => {
     try {
-        res.clearCookie("token");
+        res.clearCookie("token", clearCookieOptions);
         res.status(200).json({ success: true, message: "Logged out successfully" });
     } catch (error) {
         console.error("Logout Error:", error);

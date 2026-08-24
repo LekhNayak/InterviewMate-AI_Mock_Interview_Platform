@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime
@@ -360,9 +361,30 @@ def _log_flow(session_id: str, action: str, questions_count: Optional[int] = Non
     _append_log(INTERVIEW_FLOW_LOG, entry)
 
 
+def _strip_reasoning(text: str) -> str:
+    """Remove <think>...</think> blocks some reasoning models emit.
+
+    Safety net for the interview flow: this text is spoken to the candidate and
+    is also fed to json.loads() in _generate_feedback, so stray reasoning would
+    both leak into the interview and break the feedback parse.
+    """
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # An unterminated block (response cut off mid-reasoning) leaves a dangling tag.
+    cleaned = re.sub(r"<think>.*", "", cleaned, flags=re.DOTALL)
+    return cleaned.strip()
+
+
 def _groq_response(system: str, user: str) -> str:
     client = _get_groq_client()
-    model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model_name = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
+
+    kwargs = {}
+    # Qwen3 emits <think> reasoning by default. reasoning_effort="none" turns it
+    # off at the source; models that are not reasoning models reject the value,
+    # so only send it for Qwen.
+    if "qwen" in model_name.lower():
+        kwargs["reasoning_effort"] = "none"
+
     response = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -371,8 +393,9 @@ def _groq_response(system: str, user: str) -> str:
         ],
         temperature=0.4,
         max_tokens=350,
+        **kwargs,
     )
-    return response.choices[0].message.content.strip()
+    return _strip_reasoning(response.choices[0].message.content)
 
 
 def _generate_intro_response(session: Dict, intro_text: str) -> str:

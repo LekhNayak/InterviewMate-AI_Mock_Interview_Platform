@@ -8,7 +8,7 @@
 
 | Feature | Description |
 |---|---|
-| Interview Simulation | Practice live mock interviews; Groq LLM (llama-3.3-70b-versatile) generates contextual questions |
+| Interview Simulation | Practice live mock interviews; Groq LLM (qwen/qwen3.6-27b) generates contextual questions |
 | Resume Parsing | Upload a PDF resume; Groq extracts structured data automatically |
 | ATS Scoring | Match a resume against a job description; ChromaDB finds similar resumes via embeddings |
 | Emotion Recognition | Analyze speech patterns, emotion, and gender from audio (TensorFlow models) |
@@ -86,7 +86,7 @@ Efos-Virtual Hack/
 - **JWT + bcrypt** — secure authentication (Cookie-based)
 - **Multer** — file handling
 - **Cloudinary** — primary storage for resumes and session records
-- **Groq SDK** — fast LLM inference (llama-3.3-70b-versatile)
+- **Groq SDK** — fast LLM inference (qwen/qwen3.6-27b interview, openai/gpt-oss-120b parsing/ATS)
 - **Nodemailer** — transactional OTP emails
 - **pdf-parse** — local text extraction fallback
 

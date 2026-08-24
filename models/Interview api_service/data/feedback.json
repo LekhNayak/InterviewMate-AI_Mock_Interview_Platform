@@ -460,5 +460,33 @@
     },
     "role": "Technology Intern",
     "timestamp": "2026-05-04T12:17:07.267823"
+  },
+  {
+    "session_id": "c5d6a159-0297-4bc3-a207-36af0b3093be",
+    "feedback": {
+      "overall_rating": "2",
+      "scores": {
+        "technical_accuracy": 1,
+        "communication": 2,
+        "depth": 1,
+        "problem_solving": 1
+      },
+      "summary": "The candidate failed to answer any of the interviewer's questions correctly, providing responses that were completely irrelevant to the topics asked. This indicates a fundamental inability to follow instructions or a severe lack of understanding of basic backend concepts.",
+      "strengths": [
+        "None identified"
+      ],
+      "areas_for_improvement": [
+        "Active listening and reading comprehension",
+        "Basic understanding of REST API design, error handling, and authentication",
+        "Relevance of technical responses to the question asked"
+      ],
+      "recommended_next_steps": [
+        "Practice answering interview questions by first restating the question to ensure understanding",
+        "Review fundamental backend concepts such as middleware, error handling patterns, and JWT/OAuth implementation",
+        "Conduct mock interviews focusing on staying on topic and providing direct answers"
+      ]
+    },
+    "role": "Backend Engineer",
+    "timestamp": "2026-08-24T19:13:19.317581"
   }
 ]

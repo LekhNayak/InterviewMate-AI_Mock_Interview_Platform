@@ -8,7 +8,7 @@
 
 | Feature | Description |
 |---|---|
-| Interview Simulation | Live mock interviews; Groq LLM (llama-3.3-70b-versatile) generates contextual questions |
+| Interview Simulation | Live mock interviews; Groq LLM (qwen/qwen3.6-27b) generates contextual questions |
 | Resume Builder | Upload PDF → Groq extracts structured data; edit/save via UI |
 | ATS Scoring | Match a resume against a job description; ChromaDB finds similar resumes via embeddings |
 | Emotion Recognition | Analyze speech patterns, emotion, and gender from audio (TensorFlow models) |
@@ -33,7 +33,7 @@ Express API (Node.js, :5000 or :8000)
     ├── RapidAPI / LinkedIn Scraper (job search)
     └── Nodemailer (OTP email)
 
-Python Microservices (Port-specific logic handled via Express proxy):
+Python Microservices (Port-specific logic handled via ExpresVs proxy):
     ├── Interview Service  :5000   Flask — session management, Groq Q-gen, Sarvam TTS, transcription
     ├── ATS/Resume Service :6050   Flask — PDF parsing, Groq analysis, ChromaDB similarity
     └── Emotion Analysis   :8090   Flask — TensorFlow MFCC emotion/gender models
@@ -182,7 +182,7 @@ python main.py                  # http://localhost:8090
 | `PORT` | Express port (default 8000) |
 | `SECRET_KEY` | JWT signing secret |
 | `GROQ_API_KEY` | Groq LLM (resume parsing) |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` |
 | `RAPIDAPI_KEY` | LinkedIn Scraper API (job search) |
 | `EMAIL_USER` / `EMAIL_PASS` | Nodemailer SMTP credentials |
 | `ML_SERVER` | Base URL for ATS Python service (`http://localhost:6050`) |
@@ -192,7 +192,7 @@ python main.py                  # http://localhost:8090
 | Variable | Purpose |
 |---|---|
 | `GROQ_API_KEY` | Groq LLM |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` |
+| `GROQ_MODEL` | `qwen/qwen3.6-27b` |
 | `SARVAM_API_KEY` | Text-to-speech for interviewer audio |
 | `PORT` | Service port (5000) |
 
@@ -200,7 +200,7 @@ python main.py                  # http://localhost:8090
 | Variable | Purpose |
 |---|---|
 | `GROQ_API_KEY` | Groq LLM for ATS analysis |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` |
 
 ---
 
@@ -342,7 +342,7 @@ _id, email, otp, createdAt (TTL: 5 minutes)
 | Auth | JWT (cookies) + bcrypt | |
 | File Upload | Multer 2 (memory storage) | |
 | Storage | Cloudinary (video + PDF) | |
-| LLM | Groq API (llama-3.3-70b-versatile) | 100k TPD limit on free tier |
+| LLM | Groq API (qwen/qwen3.6-27b interview, openai/gpt-oss-120b parsing/ATS) | 8k TPM limit on free tier |
 | Job Search | RapidAPI — fresh-linkedin-scraper-api | |
 | Email | Nodemailer | Gmail app password |
 | Python Services | Flask 3 | Three separate processes |

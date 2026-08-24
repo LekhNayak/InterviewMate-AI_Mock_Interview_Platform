@@ -3,6 +3,7 @@ const pdfParse = require('pdf-parse');
 const { uploadBuffer } = require('../config/cloudinary');
 const JobDescription = require('../models/jd.model');
 const Groq = require('groq-sdk');
+const { extractJson, truncateForBudget, DEFAULT_MAX_TOKENS } = require('../utils/groqJson');
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -19,11 +20,11 @@ const parseJobDescription = async (req, res) => {
         console.log('✅ File uploaded to Cloudinary:', fileUrl);
 
         const pdfData = await pdfParse(fileBuffer);
-        const text = pdfData.text;
+        const text = truncateForBudget(pdfData.text);
         console.log('✅ Extracted text from Job Description PDF');
 
         const completion = await groq.chat.completions.create({
-            model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+            model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
             messages: [
                 {
                     role: 'system',
@@ -54,16 +55,15 @@ ${text}`,
                 },
             ],
             temperature: 0.2,
-            max_tokens: 1024,
+            max_tokens: DEFAULT_MAX_TOKENS,
+            response_format: { type: 'json_object' },
         });
-        const responseText = completion.choices[0].message.content.trim();
 
-        let parsedJd = {};
-        try {
-            parsedJd = JSON.parse(responseText);
-        } catch {
-            parsedJd = JSON.parse(responseText.match(/{[\s\S]*}/)?.[0] || '{}');
+        if (completion.choices[0].finish_reason === 'length') {
+            throw new Error('AI response was truncated — this job description is too long to parse in one pass');
         }
+
+        const parsedJd = extractJson(completion.choices[0].message.content);
 
         // ✅ Save to MongoDB
         const newJd = await JobDescription.create({

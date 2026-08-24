@@ -218,7 +218,7 @@ def get_best_resumes_for_JD(jd_text: str, top_k: int = 3) -> List[Dict[str, Any]
 
 def get_gemini_response(resume_text: str, jd: str) -> str:
     client = _get_groq_client()
-    model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     user_prompt = INPUT_PROMPT.format(text=resume_text, jd=jd)
     response = client.chat.completions.create(
         model=model_name,
@@ -336,4 +336,4 @@ def analyze_resume():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=6050, debug=True)
+    app.run(host="0.0.0.0", port=6050, debug=False)

@@ -2,6 +2,7 @@ const express = require("express");
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
 const Groq = require("groq-sdk");
+const { extractJson, truncateForBudget, DEFAULT_MAX_TOKENS } = require("../utils/groqJson");
 const { createResume, getAllResumes, deleteResume } = require("../handlers/parser.handler");
 const ParsedResume = require("../models/parser.model");
 const { userAuth } = require('../middleware/auth.middleware');
@@ -52,11 +53,11 @@ router.post("/parse", userAuth, upload.single("file"), async (req, res) => {
 
     const pdfData = await pdfParse(req.file.buffer);
     console.log("📑 PDF Text Length:", pdfData.text.length);
-    const text = pdfData.text;
+    const text = truncateForBudget(pdfData.text);
     console.log("✅ Successfully extracted text from PDF");
 
     const completion = await groq.chat.completions.create({
-      model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+      model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
       messages: [
         {
           role: "system",
@@ -82,15 +83,15 @@ ${text}`,
         },
       ],
       temperature: 0.2,
-      max_tokens: 2048,
+      max_tokens: DEFAULT_MAX_TOKENS,
+      response_format: { type: "json_object" },
     });
-    const responseText = completion.choices[0].message.content.trim();
-    let parsedResume;
-    try {
-      parsedResume = JSON.parse(responseText);
-    } catch {
-      parsedResume = JSON.parse(responseText.match(/{[\s\S]*}/)?.[0] || "{}");
+
+    if (completion.choices[0].finish_reason === "length") {
+      throw new Error("AI response was truncated — this resume is too long to parse in one pass");
     }
+
+    const parsedResume = extractJson(completion.choices[0].message.content);
 
     parsedResume.userId = req.user._id;
     parsedResume.title = req.body.title || "Imported Resume";
