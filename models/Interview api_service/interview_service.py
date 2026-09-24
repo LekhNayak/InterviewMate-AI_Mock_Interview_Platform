@@ -36,11 +36,10 @@ def create_app() -> Flask:
     app.config["UPLOAD_FOLDER"] = STATIC_DIR
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 
-    # 🌟 FIX: Initialize CORS here to ensure it's active for all requests, 
+    # Initialize CORS here to ensure it's active for all requests,
     # including the separate GET request for audio files.
     CORS(app)
-    CORS(app, origins=["http://localhost:8080"])
-    
+
 
     @app.route("/api/start_interview", methods=["POST"])
     def start_interview():

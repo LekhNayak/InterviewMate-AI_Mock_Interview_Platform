@@ -1,0 +1,87 @@
+services:
+  # Node/Express API — the service that was previously deployed on Railway.
+  - type: web
+    name: interviewmate-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20.11.0
+      - key: MONGO_URI
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
+      # Full URL (with https://) of the interviewmate-ats-service below, e.g.
+      # https://interviewmate-ats-service.onrender.com — fill in after its first deploy.
+      - key: ML_SERVER
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+  # Flask interview engine — generates questions, transcribes answers, synthesizes TTS.
+  - type: web
+    name: interviewmate-interview-service
+    runtime: python
+    plan: free
+    rootDir: "models/Interview api_service"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn "interview_service:create_app()" --bind 0.0.0.0:$PORT --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: qwen/qwen3.6-27b
+      - key: SARVAM_API_KEY
+        sync: false
+
+  # Flask ATS/resume-matching service — sentence-transformers (torch) + chromadb need more
+  # than the 512MB free tier gives, so this defaults to a 2GB plan.
+  - type: web
+    name: interviewmate-ats-service
+    runtime: python
+    plan: 1c-2g
+    rootDir: "models/Resume ATS and JD/api_service"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app --bind 0.0.0.0:$PORT --timeout 120
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+
+  # Flask emotion-recognition service — TensorFlow + OpenCV + librosa need system libs
+  # (libgl1, libsndfile1) that Render's native Python builder can't install, hence Docker.
+  # TensorFlow alone typically needs more than the 512MB free tier gives.
+  - type: web
+    name: interviewmate-emotion-service
+    runtime: docker
+    plan: 1c-2g
+    dockerfilePath: ./models/Audio_Emotion_Analysis/Dockerfile
+    dockerContext: ./models/Audio_Emotion_Analysis
+    healthCheckPath: /api/health
+    envVars: []

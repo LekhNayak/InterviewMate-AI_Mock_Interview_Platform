@@ -114,8 +114,8 @@ def _tts_chunk(text: str, language: str, client: httpx.Client) -> bytes:
         json={
             "inputs": [text],
             "target_language_code": language,
-            "speaker": "anushka",
-            "model": "bulbul:v2",
+            "speaker": "ritu",
+            "model": "bulbul:v3",
             "pace": 1,
         },
     )

@@ -6,7 +6,6 @@ groq
 chromadb
 sentence-transformers
 requests
+gunicorn
 
-streamlit
 tqdm
-
