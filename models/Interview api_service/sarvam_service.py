@@ -127,7 +127,7 @@ def _tts_chunk(text: str, language: str, client: httpx.Client) -> bytes:
 
 def text_to_speech(text: str, language: str = DEFAULT_LANGUAGE) -> bytes:
     """
-    Convert text to audio using Sarvam TTS API (bulbul:v2).
+    Convert text to audio using Sarvam TTS API (bulbul:v3).
     Splits text into ≤490-char sentence chunks, synthesizes all chunks in
     parallel, then concatenates the WAV audio in order.
     """
