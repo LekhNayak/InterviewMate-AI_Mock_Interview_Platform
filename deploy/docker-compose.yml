@@ -1,0 +1,64 @@
+# InterViewMate — full stack for a single Oracle Cloud Ampere A1 VM (ARM64).
+#
+# Run from this directory:  docker compose up -d --build
+#
+# Each service reads its secrets from its own .env file (same layout as local
+# dev). Values under `environment:` override anything in those files, which is
+# how PORT and ML_SERVER get rewired for container networking.
+
+services:
+  backend:
+    build:
+      context: ../backend
+    env_file: ../backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      # Container-to-container: the ATS service is reachable by service name,
+      # so it never needs to be exposed publicly.
+      ML_SERVER: http://ats:6050
+    restart: unless-stopped
+    depends_on:
+      - ats
+
+  interview:
+    build:
+      context: "../models/Interview api_service"
+    env_file: "../models/Interview api_service/.env"
+    environment:
+      PORT: 5000
+    restart: unless-stopped
+
+  ats:
+    build:
+      context: "../models/Resume ATS and JD/api_service"
+    env_file: "../models/Resume ATS and JD/api_service/.env"
+    environment:
+      PORT: 6050
+    restart: unless-stopped
+
+  emotion:
+    build:
+      context: ../models/Audio_Emotion_Analysis
+    environment:
+      PORT: 8090
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - interview
+      - emotion
+
+volumes:
+  caddy_data:
+  caddy_config:

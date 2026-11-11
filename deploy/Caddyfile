@@ -1,0 +1,25 @@
+# Caddy obtains and renews Let's Encrypt certificates automatically — no certbot,
+# no renewal cron. Each domain below must already have an A record pointing at
+# this VM's public IP before `docker compose up`, or the certificate request fails.
+#
+# Replace these three hostnames with your own if you use different subdomains.
+
+api.lekh.online {
+	reverse_proxy backend:5000
+}
+
+interview.lekh.online {
+	# Interview audio (TTS output) is streamed back through this same host,
+	# so uploads and responses both need room.
+	request_body {
+		max_size 50MB
+	}
+	reverse_proxy interview:5000
+}
+
+emotion.lekh.online {
+	request_body {
+		max_size 50MB
+	}
+	reverse_proxy emotion:8090
+}
