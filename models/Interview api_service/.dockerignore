@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+exampleENV.txt
+run.md
+static/recordings/*
+static/feedback_clips/*
+data/*.log.jsonl

@@ -1,0 +1,7 @@
+node_modules/
+npm-debug.log
+.env
+.env.backup
+exampleENV.txt
+tempUploads/
+.DS_Store
