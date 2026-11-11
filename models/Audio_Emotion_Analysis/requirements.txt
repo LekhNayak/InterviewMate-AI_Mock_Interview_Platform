@@ -13,5 +13,6 @@ librosa==0.10.1
 pydub==0.25.1
 imageio-ffmpeg==0.5.1
 
-# TensorFlow
-tensorflow-cpu==2.20.0
+# TensorFlow — plain package, not tensorflow-cpu: only this one ships an
+# aarch64 wheel, which Oracle's Ampere A1 (ARM) needs. Resolves CPU-only on ARM.
+tensorflow==2.20.0
