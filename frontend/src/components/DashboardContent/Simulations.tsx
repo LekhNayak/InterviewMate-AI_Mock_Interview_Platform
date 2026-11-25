@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 const API = import.meta.env.VITE_API_BASE_URL;
 import { toast } from "sonner";
-import JobFilterBar from "@/components/jobfilter";
+import JobFilterBar, { ANY_MODE } from "@/components/jobfilter";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import JDFolder from "../simulations/JdFolder";
+import type { JobDescription } from "@/types";
 
 // --- Interfaces ---
 const pastelColors = [
@@ -46,6 +47,8 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
     const [companies, setCompanies] = useState<CompanyData[]>([]);
     const [selectedCompany, setSelectedCompany] = useState<CompanyData | null>(null);
     const [popupOpen, setPopupOpen] = useState(false);
+    const [mode, setMode] = useState(ANY_MODE);
+    const [starting, setStarting] = useState(false);
 
     // --- NEW STATE FOR SIMULATION SETTINGS ---
     const [selectedLevel, setSelectedLevel] = useState<string>("medium");
@@ -71,18 +74,18 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                 const data = await res.json();
 
                 // Add dummy JD text for simulation demo if not present
-                const jobsWithJDText = data.jobs.map((job: any) => ({
+                const jobsWithJDText = (data.jobs as JobDescription[]).map((job) => ({
                     ...job,
                     jdText: job.description || `Job description for ${job.title} at ${job.company}. Requires skill in ${job.jobType}.`
                 }));
 
 
                 const grouped: { [key: string]: CompanyData } = {};
-                jobsWithJDText.forEach((job: any) => {
+                jobsWithJDText.forEach((job) => {
                     if (!grouped[job.company]) {
                         grouped[job.company] = {
                             company: job.company,
-                            description: job.description, // Company description or first JD description
+                            description: job.description || "", // Company description or first JD description
                             roles: []
                         };
                     }
@@ -106,9 +109,9 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
         getCompanies();
     }, []);
 
-    // --- Filtering Logic (Currently unused in JSX but kept) ---
     const filtered = companies.filter((i) =>
-        i.company.toLowerCase().includes(search.toLowerCase())
+        i.company.toLowerCase().includes(search.toLowerCase()) &&
+        (mode === ANY_MODE || i.roles.some((r) => r.jobType === mode))
     );
 
     // --- Start Simulation Handler (Updated to include Resume and JD text) ---
@@ -128,10 +131,11 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
             return;
         }
 
+        setStarting(true);
         try {
             const formData = new FormData();
             formData.append("file", resumeFile);
-            formData.append("title", resumeFile.name);
+            formData.append("title", resumeFile.name.replace(/\.pdf$/i, "").replace(/_/g, " "));
 
             const res = await fetch(`${API}/parser/parse`, {
                 method: "POST",
@@ -146,9 +150,6 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                 return;
             }
 
-            // Parsed resume JSON returned from backend
-            const parsedResume = data.createdResume || data.updatedResume || data;
-
             navigate("/interview", {
                 state: {
                     company: selectedCompany.company,
@@ -157,13 +158,17 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                     level: selectedLevel,
                     duration: selectedDuration,
                     interviewType: selectedInterviewType,
-                    resume: parsedResume,
+                    resume: data.resume,
+                    jdId: selectedRole._id,
+                    resumeId: data.resume?._id,
                 },
             });
 
         } catch (err) {
             console.error("Resume upload/parse failed:", err);
             toast.error("Failed to upload and parse resume.");
+        } finally {
+            setStarting(false);
         }
     };
 
@@ -254,7 +259,7 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                     </Button>
                 </div>
                 <div className="flex justify-between items-center mb-4">
-                    <JobFilterBar search={search} setSearch={setSearch} />
+                    <JobFilterBar search={search} setSearch={setSearch} mode={mode} setMode={setMode} />
                 </div>
 
                 {/* Company Carousel */}
@@ -407,11 +412,11 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                         </div>
 
                         <div className="mb-6">
-                            <label className="text-sm font-medium text-gray-700 mx-2 mb-1 block">5. Upload Your Resume (PDF/DOCX)</label>
+                            <label className="text-sm font-medium text-gray-700 mx-2 mb-1 block">5. Upload Your Resume (PDF)</label>
                             <div className="flex items-center gap-3 p-3 bg-gray-100 border border-gray-200 rounded-xl">
                                 <input
                                     type="file"
-                                    accept=".pdf,.docx"
+                                    accept="application/pdf"
                                     onChange={e => setResumeFile(e.target.files?.[0] || null)}
                                     className="flex-1 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-white file:text-black hover:file:bg-gray-200"
                                 />
@@ -428,10 +433,10 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                             </button>
                             <button
                                 onClick={startSimulation}
-                                disabled={!resumeFile}
+                                disabled={!resumeFile || starting}
                                 className="flex-1 py-2.5 rounded-xl bg-black text-white text-sm font-medium hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Start Simulation
+                                {starting ? "Starting…" : "Start Simulation"}
                             </button>
                         </div>
                     </div>

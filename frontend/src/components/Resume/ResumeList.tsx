@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 const API = import.meta.env.VITE_API_BASE_URL;
 import { toast } from "sonner";
-import { MoreVertical, Download, Plus, Save, FilePlus, Upload } from "lucide-react";
+import { MoreVertical, Download, FileCode, Plus, Save, FilePlus, Upload } from "lucide-react";
+import { errorMessage } from "@/lib/errors";
+import { exportResumeToPdf } from "@/utils/exportToPdf";
 import type { Resume } from "../../types";
 
 interface Props {
@@ -13,7 +15,7 @@ interface Props {
     onDelete: (id: string) => void;
     onImport: (parsedResume: Resume) => void;
     onUpdate: (id: string, updatedResume: Resume) => void;
-    onCreate: (newResume: Resume) => void;
+    onCreate: (draftId: string, newResume: Resume) => void;
 }
 
 const generateLatex = (resume: Resume) => {
@@ -144,6 +146,15 @@ const ResumeList: React.FC<Props> = ({
         URL.revokeObjectURL(link.href);
     };
 
+    const handleDownloadPdf = async (resume: Resume) => {
+        try {
+            await exportResumeToPdf(resume);
+        } catch (err) {
+            console.error("PDF export failed:", err);
+            toast.error("The PDF could not be created");
+        }
+    };
+
 
     const handleUploadPDF = async (file: File) => {
         const formData = new FormData();
@@ -158,8 +169,10 @@ const ResumeList: React.FC<Props> = ({
 
             const data = await res.json();
             const parsed = data.parsedResume || data.resume;
-            if (data.success && parsed) onImport(parsed);
-            else toast.error("PDF parsing failed");
+            if (data.success && parsed) {
+                onImport(parsed);
+                toast.success("Resume imported");
+            } else toast.error(data.error || "PDF parsing failed");
         } catch (err) {
             console.error("Upload error:", err);
             toast.error("Error uploading file");
@@ -171,12 +184,6 @@ const ResumeList: React.FC<Props> = ({
         setIsSaving(true);
 
         try {
-            const storedUser = localStorage.getItem("user");
-            const user = storedUser ? JSON.parse(storedUser) : null;
-            const userId = user?._id;
-
-            if (!userId) throw new Error("User not logged in");
-
             const resumeToSave = resumes.find((r) => r._id === selectedId);
             if (!resumeToSave) throw new Error("Resume not found");
 
@@ -187,13 +194,13 @@ const ResumeList: React.FC<Props> = ({
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
-                    body: JSON.stringify({ ...resumeToSave, userId }),
+                    body: JSON.stringify(resumeToSave),
                 });
 
-                if (!createRes.ok) throw new Error("Failed to create resume");
-
                 const created = await createRes.json();
-                onCreate(created.resume || created.parsedResume);
+                if (!createRes.ok) throw new Error(created.error || created.message);
+
+                onCreate(resumeToSave._id!, created.resume);
                 toast.success("New resume created successfully!");
             } else {
                 const updateRes = await fetch(
@@ -201,20 +208,20 @@ const ResumeList: React.FC<Props> = ({
                     {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ ...resumeToSave, userId }),
+                        body: JSON.stringify(resumeToSave),
                         credentials: "include",
                     }
                 );
 
-                if (!updateRes.ok) throw new Error("Failed to update resume");
-
                 const updated = await updateRes.json();
-                onUpdate(resumeToSave._id!, updated.updatedResume || updated.resume);
+                if (!updateRes.ok) throw new Error(updated.error || updated.message);
+
+                onUpdate(resumeToSave._id!, updated.updatedResume);
                 toast.success("Resume updated successfully!");
             }
         } catch (err) {
             console.error("Save failed:", err);
-            toast.error("Could not save resume");
+            toast.error(errorMessage(err, "Could not save resume"));
         } finally {
             setIsSaving(false);
         }
@@ -319,10 +326,19 @@ const ResumeList: React.FC<Props> = ({
                                     className="w-full text-left px-4 py-2 hover:bg-gray-100/80 rounded-md flex items-center gap-2 text-gray-700 transition-colors"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handleDownloadLatex(r);
+                                        handleDownloadPdf(r);
                                     }}
                                 >
                                     <Download size={14} /> Download PDF
+                                </button>
+                                <button
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-100/80 rounded-md flex items-center gap-2 text-gray-700 transition-colors"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDownloadLatex(r);
+                                    }}
+                                >
+                                    <FileCode size={14} /> Download LaTeX
                                 </button>
                                 {confirmDeleteId === r._id ? (
                                     <div className="px-3 py-2 border-t border-red-100 bg-red-50/50" onClick={e => e.stopPropagation()}>
@@ -408,6 +424,8 @@ const ResumeList: React.FC<Props> = ({
                                     onChange={(e) => {
                                         const file = e.target.files?.[0];
                                         if (file) handleUploadPDF(file);
+                                        e.target.value = ""; // allow the same file again
+                                        setOpenMenu(null);
                                     }}
                                 />
                             </label>

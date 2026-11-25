@@ -9,11 +9,8 @@ const transporter = nodemailer.createTransport({
 });
 
 async function sendEmail(to, subject, text) {
-    console.log("in");
-    console.log("EMAIL_USER:", process.env.EMAIL_USER);
-    console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "✅ Loaded" : "❌ Missing");
     await transporter.sendMail({
-        from: `<${process.env.EMAIL_USER}>`,
+        from: `InterviewMate <${process.env.EMAIL_USER}>`,
         to,
         subject,
         text,

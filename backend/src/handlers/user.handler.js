@@ -1,79 +1,112 @@
-const User = require('../models/user.model');
-const OTP = require('../models/otp.model');
-const sendEmail = require('../config/mailer');
-const { validateSignUpData } = require('../utils/validate');
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
+const User = require('../models/user.model');
+const OTP = require('../models/otp.model');
+const ParsedResume = require('../models/parser.model');
+const JobDescription = require('../models/jd.model');
+const ATS = require('../models/ats.model');
+const Interview = require('../models/interview.model');
+const sendEmail = require('../config/mailer');
+const { validateSignUpData } = require('../utils/validate');
 const { cookieOptions, clearCookieOptions, AUTH_COOKIE_MAX_AGE } = require('../config/cookie');
+
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_RESEND_MS = 60 * 1000;
+const MIN_PASSWORD_LENGTH = 6;
+
+// Only strings may reach a Mongo filter: an object such as {"$gt": ""} would be an operator.
+const cleanEmail = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+const demoEmail = () => cleanEmail(process.env.DEMO_EMAIL);
+const isDemoUser = (user) => Boolean(demoEmail()) && user.email === demoEmail();
+
+const publicUser = (user) => ({ _id: user._id, name: user.name, email: user.email });
+
+const setSession = async (res, user) => {
+    const token = await user.getJWT();
+    res.cookie('token', token, { ...cookieOptions, maxAge: AUTH_COOKIE_MAX_AGE });
+};
 
 const requestOtp = async (req, res) => {
     try {
-        const { email } = req.body;
+        const email = cleanEmail(req.body?.email);
 
-        if (!email) return res.status(400).json({ message: "Email is required" });
+        if (!email) return res.status(400).json({ success: false, message: "Email is required" });
 
         const existingUser = await User.findOne({ email });
         if (existingUser) {
-            return res.status(400).json({ message: "User already exists with this email" });
+            return res.status(400).json({ success: false, message: "User already exists with this email" });
         }
 
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const pending = await OTP.findOne({ email });
+        if (pending && Date.now() - pending.createdAt.getTime() < OTP_RESEND_MS) {
+            return res.status(429).json({ success: false, message: "A code was just sent. Wait a minute before asking for another." });
+        }
 
-        await OTP.findOneAndUpdate({ email }, { otp, createdAt: new Date() }, { upsert: true });
+        const otp = crypto.randomInt(100000, 1000000).toString();
 
-        await sendEmail(email, "Your OTP for Resume Parser Signup", `Your OTP is: ${otp}`);
+        await sendEmail(email, "Your InterviewMate sign-up code", `Your code is: ${otp}\nIt expires in 5 minutes.`);
+        await OTP.findOneAndUpdate({ email }, { otp, attempts: 0, createdAt: new Date() }, { upsert: true });
 
         res.status(200).json({ success: true, message: "OTP sent to email" });
     } catch (error) {
-        console.error("OTP Request Error:", error);
+        console.error("OTP Request Error:", error.message);
         res.status(500).json({ success: false, message: "Failed to send OTP" });
     }
 };
 
 const signup = async (req, res) => {
-    console.log("Signup Body:", req.body);
     try {
-        const { name, email, password, otp } = req.body;
+        const { name, password, otp } = req.body || {};
+        const email = cleanEmail(req.body?.email);
 
-        validateSignUpData(req);
-
-        const validOtp = await OTP.findOne({ email });
-        if (!validOtp || validOtp.otp !== otp) {
-            return res.status(400).json({ message: "Invalid or expired OTP" });
+        try {
+            validateSignUpData(req);
+            if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+                throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long`);
+            }
+        } catch (err) {
+            return res.status(400).json({ success: false, message: err.message });
         }
 
-        await OTP.deleteOne({ email });
+        // Count the attempt before comparing, so parallel guesses cannot slip past the limit.
+        const pending = await OTP.findOneAndUpdate({ email }, { $inc: { attempts: 1 } }, { new: true });
+        if (pending && pending.attempts > MAX_OTP_ATTEMPTS) {
+            return res.status(429).json({ success: false, message: "Too many wrong codes. Request a new one." });
+        }
+        if (!pending || pending.otp !== String(otp)) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
 
         const newUser = new User({ name, email, password });
         await newUser.save();
-
-        const token = await newUser.getJWT();
-
-        // ✅ Store JWT inside httpOnly cookie
-        res.cookie('token', token, { ...cookieOptions, maxAge: AUTH_COOKIE_MAX_AGE });
+        await OTP.deleteOne({ email });
+        await setSession(res, newUser);
 
         res.status(201).json({
             success: true,
             message: "User registered successfully",
-            user: {
-                _id: newUser._id,
-                name: newUser.name,
-                email: newUser.email
-            },
+            user: publicUser(newUser),
         });
     } catch (error) {
-        console.error("Signup Error:", error);
-
+        if (error.code === 11000) {
+            return res.status(400).json({ success: false, message: "User already exists with this email" });
+        }
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ success: false, message: Object.values(error.errors)[0].message });
+        }
+        console.error("Signup Error:", error.message);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
 
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const email = cleanEmail(req.body?.email);
+        const { password } = req.body || {};
 
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required' });
+        if (!email || typeof password !== 'string' || !password) {
+            return res.status(400).json({ success: false, message: 'Email and password are required' });
         }
 
         const user = await User.findOne({ email }).select('+password');
@@ -92,20 +125,15 @@ const login = async (req, res) => {
             });
         }
 
-        const token = await user.getJWT();
-        res.cookie('token', token, { ...cookieOptions, maxAge: AUTH_COOKIE_MAX_AGE });
+        await setSession(res, user);
 
         return res.status(200).json({
             success: true,
             message: 'User logged in successfully',
-            user: {
-                _id: user._id,
-                name: user.name,
-                email: user.email,
-            },
+            user: publicUser(user),
         });
     } catch (error) {
-        console.error('Login Error:', error);
+        console.error('Login Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'Internal Server Error',
@@ -113,6 +141,43 @@ const login = async (req, res) => {
     }
 };
 
+// The demo account is named by DEMO_EMAIL and opened by the server, so no
+// password has to be published in the frontend.
+const demoStatus = async (req, res) => {
+    try {
+        const enabled = Boolean(demoEmail()) && Boolean(await User.exists({ email: demoEmail() }));
+        res.json({ success: true, enabled });
+    } catch (error) {
+        console.error('Demo Status Error:', error.message);
+        res.json({ success: true, enabled: false });
+    }
+};
+
+const demoLogin = async (req, res) => {
+    try {
+        const user = demoEmail() ? await User.findOne({ email: demoEmail() }) : null;
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'The demo account is not available' });
+        }
+        await setSession(res, user);
+        res.json({ success: true, message: 'User logged in successfully', user: publicUser(user) });
+    } catch (error) {
+        console.error('Demo Login Error:', error.message);
+        res.status(500).json({ success: false, message: 'Internal Server Error' });
+    }
+};
+
+// Short-lived token the browser sends to the interview and emotion services.
+// `token` is null when SERVICE_TOKEN_SECRET is not set, and the services then
+// accept requests without one.
+const serviceToken = (req, res) => {
+    const secret = process.env.SERVICE_TOKEN_SECRET;
+    if (!secret) return res.json({ success: true, token: null });
+
+    const expiresIn = 3 * 60 * 60;
+    const token = jwt.sign({ sub: String(req.user._id) }, secret, { audience: 'interviewmate-services', expiresIn });
+    res.json({ success: true, token, expiresIn });
+};
 
 const profile = async (req, res) => {
     try {
@@ -160,12 +225,13 @@ const updateProfile = async (req, res) => {
         if (name) allowedUpdates.name = name;
         if (age) allowedUpdates.age = age;
         if (gender) allowedUpdates.gender = gender;
-        if (skills) allowedUpdates.skills = skills;
-        if (interests) allowedUpdates.interests = interests;
-        if (githubUrl) allowedUpdates.githubUrl = githubUrl;
-        if (linkedinUrl) allowedUpdates.linkedinUrl = linkedinUrl;
-        if (codeforcesUrl) allowedUpdates.codeforcesUrl = codeforcesUrl;
-        if (leetcodeUrl) allowedUpdates.leetcodeUrl = leetcodeUrl;
+        // These may be cleared, so an empty value is a valid update.
+        if (skills !== undefined) allowedUpdates.skills = skills;
+        if (interests !== undefined) allowedUpdates.interests = interests;
+        if (githubUrl !== undefined) allowedUpdates.githubUrl = githubUrl;
+        if (linkedinUrl !== undefined) allowedUpdates.linkedinUrl = linkedinUrl;
+        if (codeforcesUrl !== undefined) allowedUpdates.codeforcesUrl = codeforcesUrl;
+        if (leetcodeUrl !== undefined) allowedUpdates.leetcodeUrl = leetcodeUrl;
 
         if (Object.keys(allowedUpdates).length === 0) {
             return res.status(400).json({
@@ -207,6 +273,9 @@ const updateProfile = async (req, res) => {
             },
         });
     } catch (error) {
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ success: false, message: Object.values(error.errors)[0].message });
+        }
         console.error("Update Profile Error:", error);
         res.status(500).json({
             success: false,
@@ -227,11 +296,20 @@ const logout = async (req, res) => {
 
 const deleteUser = async (req, res) => {
     try {
-        const { id } = req.params;
-        const deletedUser = await User.findByIdAndDelete(id);
-        if (!deletedUser)
-            return res.status(404).json({ success: false, message: "User not found" });
+        if (isDemoUser(req.user)) {
+            return res.status(403).json({ success: false, message: "The demo account cannot be deleted" });
+        }
 
+        const userId = req.user._id;
+        await Promise.all([
+            ParsedResume.deleteMany({ userId }),
+            Interview.deleteMany({ userId }),
+            ATS.deleteMany({ user: userId }),
+            JobDescription.deleteMany({ uploadedBy: userId }),
+        ]);
+        await User.findByIdAndDelete(userId);
+
+        res.clearCookie("token", clearCookieOptions);
         res.status(200).json({ success: true, message: "User deleted successfully" });
     } catch (error) {
         console.error("Delete User Error:", error);
@@ -241,20 +319,31 @@ const deleteUser = async (req, res) => {
 
 const changePassword = async (req, res) => {
     try {
-        const { currentPassword, newPassword } = req.body;
-        const user = await User.findById(req.user._id).select("+password");
-        console.log(user);
+        const { currentPassword, newPassword } = req.body || {};
 
-        if (!user) return res.status(404).json({ message: "User not found" });
-        if (!user.comparePassword(currentPassword))
-            return res.status(400).json({ message: "Current password incorrect" });
+        if (isDemoUser(req.user)) {
+            return res.status(403).json({ success: false, message: "The demo account's password cannot be changed" });
+        }
+        if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+            return res.status(400).json({ success: false, message: "Current and new password are required" });
+        }
+        if (newPassword.length < MIN_PASSWORD_LENGTH) {
+            return res.status(400).json({ success: false, message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters long` });
+        }
+
+        const user = await User.findById(req.user._id).select("+password");
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        if (!(await user.comparePassword(currentPassword))) {
+            return res.status(400).json({ success: false, message: "Current password incorrect" });
+        }
 
         user.password = newPassword;
         await user.save();
 
         res.status(200).json({ success: true, message: "Password changed successfully" });
     } catch (error) {
-        console.error("Change Password Error:", error);
+        console.error("Change Password Error:", error.message);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
@@ -262,6 +351,9 @@ const changePassword = async (req, res) => {
 module.exports = {
     signup,
     login,
+    demoStatus,
+    demoLogin,
+    serviceToken,
     profile,
     updateProfile,
     requestOtp,

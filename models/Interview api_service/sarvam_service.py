@@ -20,7 +20,7 @@ DEFAULT_LANGUAGE = "en-IN"
 def _get_api_key() -> str:
     key = os.getenv("SARVAM_API_KEY")
     if not key:
-        raise RuntimeError("Missing SARVAM_API_KEY in api_service/data/config.env")
+        raise RuntimeError("Missing SARVAM_API_KEY in the interview service .env")
     return key.strip()
 
 

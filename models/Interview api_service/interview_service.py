@@ -2,17 +2,19 @@ import json
 import os
 import re
 import tempfile
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Tuple
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, g, has_request_context, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 from groq import Groq
 from sarvam_service import text_to_speech
+from service_auth import install_auth
 
 SERVICE_ROOT = Path(__file__).resolve().parent
 DATA_DIR = SERVICE_ROOT / "data"
@@ -28,6 +30,9 @@ INTERVIEW_FLOW_LOG = DATA_DIR / "interview_flow.log.jsonl"
 INTERVIEW_SESSIONS_LOG = DATA_DIR / "interview_sessions.log.jsonl"
 FEEDBACK_FILE = DATA_DIR / "feedback.json"
 
+FEEDBACK_MAX_TOKENS = 1200
+FEEDBACK_ATTEMPTS = 2
+
 ALLOWED_AUDIO_EXT = {".mp3", ".wav", ".webm", ".m4a", ".ogg", ".flac"}
 
 
@@ -40,6 +45,13 @@ def create_app() -> Flask:
     # including the separate GET request for audio files.
     CORS(app)
 
+    # Audio files are fetched by an <audio> element, which cannot send headers.
+    # Their names are random.
+    install_auth(app, public_paths=("/api/health",), public_prefixes=("/api/static/recordings/",))
+
+    @app.route("/api/health", methods=["GET"])
+    def health():
+        return jsonify({"status": "ok"})
 
     @app.route("/api/start_interview", methods=["POST"])
     def start_interview():
@@ -140,14 +152,15 @@ def create_app() -> Flask:
     def get_feedback(session_id: str):
         try:
             session = _fetch_session(session_id)
-            if session["current_state"] != "completed":
-                return jsonify({"error": "Interview not completed yet"}), 400
-            feedback = _ensure_feedback(session)
-            return jsonify(feedback), 200
         except ValueError as err:
             return jsonify({"error": str(err)}), 404
+        if session["current_state"] != "completed":
+            return jsonify({"error": "Interview not completed yet"}), 400
+        try:
+            return jsonify(_ensure_feedback(session)), 200
         except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
+            print(f"ERROR: feedback failed for session {session_id}: {exc}")
+            return jsonify({"error": "The feedback could not be generated. Try again."}), 502
 
     @app.route("/api/static/recordings/<path:filename>", methods=["GET"])
     def serve_recording(filename: str):
@@ -166,6 +179,9 @@ def create_app() -> Flask:
 
 # ---------- Internal helpers ----------
 
+# Serializes every read-modify-write of the JSON files within this process.
+_FILE_LOCK = threading.RLock()
+
 def _read_json(path: Path) -> List[Dict]:
     if not path.exists():
         return []
@@ -178,8 +194,11 @@ def _read_json(path: Path) -> List[Dict]:
 
 def _write_json(path: Path, data: List[Dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
+    # Write to a temporary file first, so a crash cannot leave a half-written file behind.
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 
 def _append_log(path: Path, entry: Dict) -> None:
@@ -191,7 +210,7 @@ def _append_log(path: Path, entry: Dict) -> None:
 def _get_groq_client() -> Groq:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise RuntimeError("Missing GROQ_API_KEY in api_service/data/config.env")
+        raise RuntimeError("Missing GROQ_API_KEY in the interview service .env")
     return Groq(api_key=api_key.strip())
 
 
@@ -216,6 +235,26 @@ _DURATION_TO_QUESTIONS = {
     "30min": 12,
     "45min": 17,
 }
+
+# A reply that says goodbye without asking anything ends the interview early.
+# Polite phrases such as "thank you" are not enough: they also open normal questions.
+_CLOSING_PHRASES = (
+    "that's a wrap",
+    "that\u2019s a wrap",
+    "best of luck",
+    "pleasure speaking",
+    "thank you for your time",
+    "concludes our interview",
+    "concludes the interview",
+    "end of our interview",
+    "end of the interview",
+)
+
+
+def _is_closing(response: str) -> bool:
+    text = response.lower()
+    return "?" not in text and any(phrase in text for phrase in _CLOSING_PHRASES)
+
 
 _INTERVIEW_TYPE_INSTRUCTIONS = {
     "hr": (
@@ -300,6 +339,7 @@ def _create_session(role: str, resume: str, jd: str,
     session_id = str(uuid.uuid4())
     session = {
         "session_id": session_id,
+        "user_id": g.get("user_id") if has_request_context() else None,
         "role": role,
         "resume_text": resume,
         "jd_text": jd,
@@ -314,9 +354,10 @@ def _create_session(role: str, resume: str, jd: str,
         "intro_received": False,
         "start_time": datetime.now().isoformat(),
     }
-    sessions = _read_json(INTERVIEW_SESSIONS_FILE)
-    sessions.append(session)
-    _write_json(INTERVIEW_SESSIONS_FILE, sessions)
+    with _FILE_LOCK:
+        sessions = _read_json(INTERVIEW_SESSIONS_FILE)
+        sessions.append(session)
+        _write_json(INTERVIEW_SESSIONS_FILE, sessions)
 
     _append_log(
         INTERVIEW_SESSIONS_LOG,
@@ -333,19 +374,26 @@ def _create_session(role: str, resume: str, jd: str,
 
 
 def _fetch_session(session_id: str) -> Dict:
-    for session in _read_json(INTERVIEW_SESSIONS_FILE):
+    with _FILE_LOCK:
+        sessions = _read_json(INTERVIEW_SESSIONS_FILE)
+    for session in sessions:
         if session["session_id"] == session_id:
+            owner = session.get("user_id")
+            # Someone else's session looks the same as a missing one.
+            if owner and has_request_context() and g.get("user_id") != owner:
+                break
             return session
     raise ValueError(f"Session {session_id} not found")
 
 
 def _save_session(session: Dict) -> None:
-    sessions = _read_json(INTERVIEW_SESSIONS_FILE)
-    for idx, item in enumerate(sessions):
-        if item["session_id"] == session["session_id"]:
-            sessions[idx] = session
-            _write_json(INTERVIEW_SESSIONS_FILE, sessions)
-            return
+    with _FILE_LOCK:
+        sessions = _read_json(INTERVIEW_SESSIONS_FILE)
+        for idx, item in enumerate(sessions):
+            if item["session_id"] == session["session_id"]:
+                sessions[idx] = session
+                _write_json(INTERVIEW_SESSIONS_FILE, sessions)
+                return
     raise ValueError("Session not found while saving")
 
 
@@ -373,7 +421,7 @@ def _strip_reasoning(text: str) -> str:
     return cleaned.strip()
 
 
-def _groq_response(system: str, user: str) -> str:
+def _groq_response(system: str, user: str, max_tokens: int = 350) -> str:
     client = _get_groq_client()
     model_name = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
 
@@ -391,7 +439,7 @@ def _groq_response(system: str, user: str) -> str:
             {"role": "user", "content": user},
         ],
         temperature=0.4,
-        max_tokens=350,
+        max_tokens=max_tokens,
         **kwargs,
     )
     return _strip_reasoning(response.choices[0].message.content)
@@ -417,14 +465,34 @@ def _generate_followup(session: Dict, new_answer: str) -> str:
 
 
 def _ensure_feedback(session: Dict) -> Dict:
+    """Return the stored feedback record, generating it on first use."""
     if session.get("feedback_generated"):
-        for fb in _read_json(FEEDBACK_FILE):
-            if fb.get("session_id") == session["session_id"]:
-                return fb
-    feedback = _generate_feedback(session)
+        with _FILE_LOCK:
+            records = _read_json(FEEDBACK_FILE)
+        for record in records:
+            if record.get("session_id") == session["session_id"]:
+                return record
+    record = _generate_feedback(session)
     session["feedback_generated"] = True
     _save_session(session)
-    return feedback
+    return record
+
+
+def _parse_json_object(text: str) -> Dict:
+    start, end = text.find("{"), text.rfind("}") + 1
+    if start == -1 or end <= start:
+        raise ValueError("no JSON object in the model reply")
+    return json.loads(text[start:end])
+
+
+def _request_feedback(system: str, user: str) -> Dict:
+    last_error: Optional[Exception] = None
+    for _ in range(FEEDBACK_ATTEMPTS):
+        try:
+            return _parse_json_object(_groq_response(system, user, max_tokens=FEEDBACK_MAX_TOKENS))
+        except ValueError as err:  # includes json.JSONDecodeError
+            last_error = err
+    raise RuntimeError(f"Feedback was not valid JSON: {last_error}")
 
 
 def _generate_feedback(session: Dict) -> Dict:
@@ -464,9 +532,7 @@ Scoring guide:
 - depth: How detailed and thorough the answers were — did they go beyond surface level?
 - problem_solving: Logical thinking, structured approach, handling of edge cases
 - overall_rating: Holistic score weighing all four dimensions at {session['interview_level']} difficulty"""
-    text = _groq_response(system, user)
-    start, end = text.find("{"), text.rfind("}") + 1
-    feedback = json.loads(text[start:end])
+    feedback = _request_feedback(system, user)
 
     # Ensure overall_rating is always an integer string for frontend compat
     scores = feedback.get("scores", {})
@@ -476,17 +542,17 @@ Scoring guide:
     else:
         feedback["overall_rating"] = str(feedback.get("overall_rating", "0"))
 
-    all_feedback = _read_json(FEEDBACK_FILE)
-    all_feedback.append(
-        {
-            "session_id": session["session_id"],
-            "feedback": feedback,
-            "role": session["role"],
-            "timestamp": datetime.now().isoformat(),
-        }
-    )
-    _write_json(FEEDBACK_FILE, all_feedback)
-    return feedback
+    record = {
+        "session_id": session["session_id"],
+        "feedback": feedback,
+        "role": session["role"],
+        "timestamp": datetime.now().isoformat(),
+    }
+    with _FILE_LOCK:
+        all_feedback = _read_json(FEEDBACK_FILE)
+        all_feedback.append(record)
+        _write_json(FEEDBACK_FILE, all_feedback)
+    return record
 
 
 def _resolve_input_text(stage: str, require_session: bool = True) -> Tuple[str, str]:
@@ -556,6 +622,8 @@ def _handle_answer(session_id: str, answer_text: str) -> Dict:
     session = _fetch_session(session_id)
     if not session["intro_received"]:
         raise ValueError("Please submit introduction first")
+    if session["current_state"] == "completed":
+        raise ValueError("This interview is already completed")
 
     questions_before = len(session["questions_asked"])
     max_q = session.get("max_questions", _max_questions(session.get("interview_duration", "15min")))
@@ -568,14 +636,14 @@ def _handle_answer(session_id: str, answer_text: str) -> Dict:
         response = (
             "That's a wrap! You did a fantastic job today — your answers were thoughtful and showed real depth. "
             "I really enjoyed our conversation. "
-            "Go ahead and click the 'View Feedback' button on the right to see your detailed feedback, "
+            "Your feedback is on its way. Click the 'View Feedback' button when it appears to see your "
             "strengths, areas to improve, and personalised next steps. Best of luck!"
         )
         is_done = True
     else:
         response = _generate_followup(session, answer_text)
         # Let the AI end early if it naturally wraps up (edge case)
-        is_done = any(kw in response.lower() for kw in ["thank you", "conclude", "that's a wrap", "best of luck", "pleasure speaking"])
+        is_done = _is_closing(response)
 
     _record_message(session, "candidate", answer_text, "answer")
     _record_message(session, "interviewer", response, "question")
@@ -588,7 +656,11 @@ def _handle_answer(session_id: str, answer_text: str) -> Dict:
         session["end_time"] = datetime.now().isoformat()
         _save_session(session)
         _log_flow(session_id, "end_interview", questions_after)
-        _ensure_feedback(session)
+        try:
+            _ensure_feedback(session)
+        except Exception as exc:
+            # The closing message must still reach the candidate; get_feedback retries.
+            print(f"ERROR: feedback failed for session {session_id}: {exc}")
         state = "completed"
         action = "end_interview"
     else:
@@ -635,5 +707,6 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=int(os.getenv("PORT", "5000")),
-        debug=True
+        # The debugger can run code for anyone who reaches the port, so it is opt-in.
+        debug=os.getenv("FLASK_DEBUG") == "1",
     )

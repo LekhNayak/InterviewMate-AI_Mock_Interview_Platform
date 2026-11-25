@@ -2,9 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { SquareArrowOutUpRight } from "lucide-react";
 import LeetCodeSegmentCircle from "./progressbar";
 
+interface LeetCodeStats {
+    totalSolved: number;
+    ranking: number;
+    easySolved: number;
+    totalEasy: number;
+    mediumSolved: number;
+    totalMedium: number;
+    hardSolved: number;
+    totalHard: number;
+    submissionCalendar?: Record<string, number>;
+}
+
 export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string }) {
-    const [stats, setStats] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState<LeetCodeStats | null>(null);
+    const [loading, setLoading] = useState(false);
 
     const username = useMemo(() => {
         const x = leetcodeLink.trim().replace(/\/+$/, "");
@@ -14,10 +26,14 @@ export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string })
     useEffect(() => {
         if (!username) return;
         const fetchLC = async () => {
+            setLoading(true);
             try {
                 const res = await fetch(`https://leetcode-api-faisalshohag.vercel.app/${username}`);
                 const data = await res.json();
-                setStats(data);
+                // The API answers 200 with an error list for unknown users.
+                setStats(typeof data.totalSolved === "number" ? data : null);
+            } catch (err) {
+                console.error("Error fetching LeetCode data:", err);
             } finally {
                 setLoading(false);
             }
@@ -45,7 +61,7 @@ export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string })
     if (!stats) {
         return (
             <div className="bg-white border border-gray-200 rounded-xl p-6 flex items-center justify-center h-64 text-gray-500 text-sm">
-                Failed to load data
+                {username ? "LeetCode data could not be loaded." : "Add your LeetCode profile URL to see your progress."}
             </div>
         );
     }

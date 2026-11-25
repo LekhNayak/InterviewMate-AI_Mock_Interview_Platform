@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/errors";
 
 interface Props {
     open: boolean;
@@ -37,8 +38,6 @@ const ProfileSetupModal = ({ open, onClose, onComplete }: Props) => {
                 return;
             }
 
-            console.log("📤 Uploading Resume File:", file.name);
-
             const formData = new FormData();
             formData.append("file", file);
             formData.append("title", "Imported Resume");
@@ -49,18 +48,16 @@ const ProfileSetupModal = ({ open, onClose, onComplete }: Props) => {
                 body: formData,
             });
 
-            console.log("📥 Parse API Response Status:", parseRes.status);
             const parsed = await parseRes.json();
-            console.log("📦 Parsed Resume Response:", parsed);
+            if (!parseRes.ok) throw new Error(parsed.error || "The resume could not be read");
 
-            const parsedSkills = parsed?.resume?.skills || [];
+            const parsedSkills = parsed?.resume?.skills || {};
 
             const skillList = [
                 ...(parsedSkills.languages || []),
                 ...(parsedSkills.frameworks || []),
                 ...(parsedSkills.other || []),
             ];
-            console.log("🧠 Extracted Skills:", parsedSkills);
 
             const updateRes = await fetch(`${API}/user/update`, {
                 method: "PUT",
@@ -69,21 +66,22 @@ const ProfileSetupModal = ({ open, onClose, onComplete }: Props) => {
                 body: JSON.stringify({
                     linkedinUrl,
                     githubUrl,
-                    interests: interests.split(",").map(i => i.trim()),
+                    interests: interests.split(",").map(i => i.trim()).filter(Boolean),
                     age,
                     gender,
                     skills: skillList
                 })
             });
 
-            console.log("✅ Profile Update Response:", await updateRes.json());
+            const updated = await updateRes.json();
+            if (!updateRes.ok) throw new Error(updated.message || "The profile could not be saved");
 
             toast.success("Profile completed successfully");
             onClose();
             onComplete();
-        } catch (err: any) {
+        } catch (err) {
             console.error("❌ Frontend Error:", err);
-            toast.error(err.message || "Something went wrong");
+            toast.error(errorMessage(err, "Something went wrong"));
         } finally {
             setLoading(false);
         }

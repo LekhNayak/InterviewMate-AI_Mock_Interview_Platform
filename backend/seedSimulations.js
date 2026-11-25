@@ -1,47 +1,38 @@
-import mongoose from "mongoose";
-import dotenv from "dotenv";
-import JobDescription from "./src/models/jd.model.js"; // IMPORTANT: .js extension required in ESM
+// Adds one public job description, owned by the demo account. Run seedDemoUser.js first.
+require("dotenv").config();
+const mongoose = require("mongoose");
+const User = require("./src/models/user.model");
+const JobDescription = require("./src/models/jd.model");
 
-dotenv.config();
-
-const userId = "68f87fa1c319bb90eaf9f64f";
-
-const pdfUrl =
-    "https://firebasestorage.googleapis.com/v0/b/vesapp-e6a7d.appspot.com/o/job_descriptions%2Fsample.pdf?alt=media";
-
-const companies = [
-    { company: "Google", title: "Cloud Developer", location: "Bangalore", type: "Hybrid" },
-
+const jobs = [
+    {
+        company: "Northwind",
+        title: "Backend Engineer",
+        location: "Pune",
+        jobType: "Hybrid",
+        description: "Northwind builds routing software for city transit operators. You will own Node.js services that store vehicle positions and push updates to riders in real time.",
+        requiredSkills: ["node.js", "express", "mongodb", "redis"],
+        url: "https://example.com/jobs/backend-engineer.pdf",
+    },
 ];
 
-async function insertData() {
+(async () => {
     try {
-        const MONGO_URL = process.env.MONGO_URI;
+        const email = (process.env.DEMO_EMAIL || "").trim().toLowerCase();
+        if (!email) throw new Error("Set DEMO_EMAIL in .env first");
 
-        await mongoose.connect(MONGO_URL);
+        await mongoose.connect(process.env.MONGO_URI);
         console.log("MongoDB Connected");
 
-        const jdDocs = companies.map(c => ({
-            url: pdfUrl,
-            title: c.title,
-            company: c.company,
-            location: c.location,
-            description: `${c.company} is hiring a ${c.title}. Work with global teams to build scalable products.`,
-            requiredSkills: ["JavaScript", "Node.js", "React"],
-            experienceLevel: "Entry",
-            jobType: c.type,
-            uploadedBy: userId,
-            isPublic: true
-        }));
+        const owner = await User.findOne({ email });
+        if (!owner) throw new Error("Demo user not found. Run seedDemoUser.js first");
 
-        await JobDescription.insertMany(jdDocs);
-
-        console.log("✅ Inserted 10 Job Descriptions Successfully");
+        const added = await JobDescription.insertMany(jobs.map((job) => ({ ...job, uploadedBy: owner._id, isPublic: true })));
+        console.log(`✅ Inserted ${added.length} job description(s)`);
+        await mongoose.disconnect();
         process.exit(0);
     } catch (err) {
-        console.error("❌ Error:", err);
+        console.error("❌ Error:", err.message);
         process.exit(1);
     }
-}
-
-insertData();
+})();

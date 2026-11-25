@@ -86,7 +86,6 @@ export default function JdOnboarding() {
             const data = await res.json();
             if (!data.success) return toast.error("Failed to parse resume: " + (data.error || "Unknown error"));
 
-            const parsedResume = data.createdResume || data.updatedResume || data;
             const jdText = `
 Job Title: ${modalJd.title}
 Company: ${modalJd.company}
@@ -106,7 +105,9 @@ ${modalJd.description || ""}
                     level,
                     duration,
                     interviewType,
-                    resume: parsedResume,
+                    resume: data.resume,
+                    jdId: modalJd._id,
+                    resumeId: data.resume?._id,
                 },
             });
         } catch {
@@ -120,7 +121,7 @@ ${modalJd.description || ""}
         <div className="h-screen flex overflow-hidden">
             <Sidebar activeMenu="Simulations" setActiveMenu={() => navigate("/dashboard?tab=Simulations")} />
             <main className="flex-1 flex flex-col overflow-hidden">
-                <TopNav />
+                <TopNav path={["Simulations", "My Uploads"]} />
                 <div className="flex-1 overflow-y-auto px-8 py-6 w-full">
                     <button
                         onClick={() => navigate("/dashboard?tab=Simulations")}
@@ -252,11 +253,11 @@ ${modalJd.description || ""}
                         </div>
 
                         <div className="mb-6">
-                            <label className="text-sm font-medium text-gray-700 mx-2 mb-1 block">4. Upload Your Resume (PDF/DOCX)</label>
+                            <label className="text-sm font-medium text-gray-700 mx-2 mb-1 block">4. Upload Your Resume (PDF)</label>
                             <div className="flex items-center gap-3 p-3 bg-gray-100 border border-gray-200 rounded-xl">
                                 <input
                                     type="file"
-                                    accept=".pdf,.docx"
+                                    accept="application/pdf"
                                     onChange={e => setResumeFile(e.target.files?.[0] || null)}
                                     className="flex-1 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-white file:text-black hover:file:bg-gray-200"
                                 />

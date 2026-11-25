@@ -7,6 +7,7 @@ import {
 
 const API = import.meta.env.VITE_API_BASE_URL;
 const JOBS_PER_PAGE = 8;
+const MAX_BATCHES = 3;
 
 interface Job {
   title: string;
@@ -51,7 +52,7 @@ export default function JobFinder() {
     fetchUser();
   }, []);
 
-  const fetchFromApi = async (targetApiPage: number, append: boolean) => {
+  const requestBatch = async (targetApiPage: number) => {
     const res = await fetch(`${API}/jobs/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -61,18 +62,28 @@ export default function JobFinder() {
 
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.message || "Failed to fetch jobs");
+    const jobs: Job[] = data.jobs;
+    return { jobs, fetched: (data.fetched as number | undefined) ?? jobs.length };
+  };
 
-    const newJobs: Job[] = data.jobs;
+  // The location filter can empty a batch while later ones still have matches,
+  // so read a few batches before giving up.
+  const loadJobs = async (firstApiPage: number, append: boolean) => {
+    let found: Job[] = [];
+    let exhausted = false;
+    let lastApiPage = firstApiPage - 1;
 
-    if (append) {
-      setAllJobs((prev) => [...prev, ...newJobs]);
-    } else {
-      setAllJobs(newJobs);
+    while (!found.length && !exhausted && lastApiPage < firstApiPage - 1 + MAX_BATCHES) {
+      lastApiPage += 1;
+      const batch = await requestBatch(lastApiPage);
+      found = batch.jobs;
+      exhausted = batch.fetched === 0;
     }
 
-    setApiPage(targetApiPage);
-    setNoMoreFromApi(newJobs.length === 0);
-    return newJobs.length;
+    setAllJobs((prev) => (append ? [...prev, ...found] : found));
+    setApiPage(lastApiPage);
+    setNoMoreFromApi(exhausted);
+    return found.length;
   };
 
   const handleSearch = async () => {
@@ -81,7 +92,7 @@ export default function JobFinder() {
     setPage(1);
     setNoMoreFromApi(false);
     try {
-      const count = await fetchFromApi(1, false);
+      const count = await loadJobs(1, false);
       setHasSearched(true);
       toast.success(`Found ${count} jobs`);
     } catch (err) {
@@ -96,13 +107,14 @@ export default function JobFinder() {
       setPage((p) => p + 1);
       return;
     }
-    // At last local page — fetch next API batch and append
+    // At last local page: fetch more and append
     if (noMoreFromApi) return;
     setLoadingMore(true);
     try {
-      const count = await fetchFromApi(apiPage + 1, true);
-      if (count > 0) setPage((p) => p + 1);
-      else toast.info("No more jobs available");
+      const count = await loadJobs(apiPage + 1, true);
+      // The last page may have had room left, then the new jobs already fill it.
+      if (count > 0) setPage((p) => (allJobs.length % JOBS_PER_PAGE === 0 ? p + 1 : p));
+      else toast.info("No more jobs found");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Server error");
     } finally {

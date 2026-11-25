@@ -1,47 +1,22 @@
 const express = require("express");
-const multer = require("multer");
-const pdfParse = require("pdf-parse");
 const Groq = require("groq-sdk");
 const { extractJson, truncateForBudget, DEFAULT_MAX_TOKENS } = require("../utils/groqJson");
-const { createResume, getAllResumes, deleteResume } = require("../handlers/parser.handler");
-const ParsedResume = require("../models/parser.model");
+const { extractPdfText } = require("../utils/pdfText");
+const { saveResume, createResume, getAllResumes, updateResume, deleteResume } = require("../handlers/parser.handler");
 const { userAuth } = require('../middleware/auth.middleware');
+const { uploadPdf } = require('../middleware/upload.middleware');
 const { uploadBuffer } = require('../config/cloudinary');
 
 require("dotenv").config();
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 router.post("/create", userAuth, createResume);
 router.get("/all", userAuth, getAllResumes);
+router.put("/update/:id", userAuth, updateResume);
 router.delete("/delete/:id", userAuth, deleteResume);
 
-
-router.put("/update/:id", userAuth, async (req, res) => {
-  console.log("🔄 Update Resume ID:", req.params.id);
-
-  try {
-    const updatedResume = await ParsedResume.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user._id },
-      req.body,
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedResume) {
-      return res.status(404).json({ success: false, message: "Resume not found" });
-    }
-
-    console.log("✅ Resume updated:", updatedResume);
-    res.json({ success: true, updatedResume });
-
-  } catch (error) {
-    console.error("❌ Error updating resume:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-router.post("/parse", userAuth, upload.single("file"), async (req, res) => {
+router.post("/parse", userAuth, uploadPdf.single("file"), async (req, res) => {
   try {
     if (!req.file)
       return res.status(400).json({ success: false, error: "No file uploaded" });
@@ -49,12 +24,7 @@ router.post("/parse", userAuth, upload.single("file"), async (req, res) => {
     const safePublicId = `${Date.now()}_${req.file.originalname.replace(/\.[^.]+$/, '').replace(/\s+/g, '_')}`;
     const pdfUrl = await uploadBuffer(req.file.buffer, 'resumes', safePublicId);
 
-    console.log("✅ File uploaded to Cloudinary:", pdfUrl);
-
-    const pdfData = await pdfParse(req.file.buffer);
-    console.log("📑 PDF Text Length:", pdfData.text.length);
-    const text = truncateForBudget(pdfData.text);
-    console.log("✅ Successfully extracted text from PDF");
+    const text = truncateForBudget(await extractPdfText(req.file.buffer));
 
     const completion = await groq.chat.completions.create({
       model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
@@ -92,17 +62,13 @@ ${text}`,
     }
 
     const parsedResume = extractJson(completion.choices[0].message.content);
-
-    parsedResume.userId = req.user._id;
     parsedResume.title = req.body.title || "Imported Resume";
-    parsedResume.pdfUrl = pdfUrl;
 
-    req.body = parsedResume;
-    console.log("📄 Final Parsed Resume to Save:", parsedResume);
-    await createResume(req, res);
+    const resume = await saveResume(parsedResume, req.user._id, pdfUrl);
+    res.status(201).json({ success: true, resume });
 
   } catch (error) {
-    console.error("❌ Error parsing resume:", error);
+    console.error("❌ Error parsing resume:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });

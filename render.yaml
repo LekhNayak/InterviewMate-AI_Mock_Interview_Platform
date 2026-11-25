@@ -37,6 +37,12 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      # Account opened by the demo button. Leave empty to hide the button.
+      - key: DEMO_EMAIL
+        sync: false
+      # Same value on the backend, interview and emotion services.
+      - key: SERVICE_TOKEN_SECRET
+        sync: false
 
   # Flask interview engine — generates questions, transcribes answers, synthesizes TTS.
   - type: web
@@ -54,6 +60,8 @@ services:
       - key: GROQ_MODEL
         value: qwen/qwen3.6-27b
       - key: SARVAM_API_KEY
+        sync: false
+      - key: SERVICE_TOKEN_SECRET
         sync: false
 
   # Flask ATS/resume-matching service — sentence-transformers (torch) + chromadb are a tight
@@ -86,4 +94,6 @@ services:
     dockerfilePath: ./models/Audio_Emotion_Analysis/Dockerfile
     dockerContext: ./models/Audio_Emotion_Analysis
     healthCheckPath: /api/health
-    envVars: []
+    envVars:
+      - key: SERVICE_TOKEN_SECRET
+        sync: false

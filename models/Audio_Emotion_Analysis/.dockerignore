@@ -3,3 +3,5 @@ __pycache__/
 audio/
 README.md
 test_api.py
+.env
+exampleENV.txt

@@ -21,31 +21,31 @@ const CareerTimeline: React.FC<CareerTimelineProps> = ({
             id: "resume-analyzer",
             title: "Resume Analyzer",
             description:
-                "Upload or paste resumes; parses fields, extracts skills/experience and produces structured JSON and suggestions.",
+                "Upload a PDF resume and edit it as fields: education, skills, projects and activities.",
         },
         {
             id: "jd-comparator",
             title: "JD Comparator",
             description:
-                "Compare resume parsed data with JD and highlight gaps/opportunities.",
+                "Upload a job description and see which of its keywords your resume is missing.",
         },
         {
             id: "ats-score",
             title: "ATS Score Generator",
             description:
-                "Compute an ATS-style match score and give actionable rewrite suggestions to improve match.",
+                "Get an ATS-style match score with suggestions to improve it.",
         },
         {
-            id: "interview-scheduling",
-            title: "Interview Scheduling",
+            id: "job-finder",
+            title: "Job Finder",
             description:
-                "Calendar booking, time-zone aware reminders and interview session creation.",
+                "Search recent LinkedIn jobs, sorted by how many of your skills they mention.",
         },
         {
             id: "mock-interview",
             title: "Mock Interview & Scoring",
             description:
-                "LLM-powered mock interviews, transcript capture, scorer and AI feedback for improvement.",
+                "Answer an AI interviewer by voice or text, then get scores, feedback and a transcript.",
         },
     ];
 
@@ -62,10 +62,10 @@ const CareerTimeline: React.FC<CareerTimelineProps> = ({
 
     const benefits = [
         "AI-powered insights to boost your interview readiness",
-        "End-to-end preparation — from resume to mock interview",
+        "End-to-end preparation, from resume to mock interview",
         "Personalized improvement feedback using LLMs",
         "Smart ATS compatibility and resume optimization",
-        "Automated scheduling with reminders and calendar sync",
+        "Job search matched to the skills on your profile",
     ];
 
     return (
@@ -118,7 +118,7 @@ const CareerTimeline: React.FC<CareerTimelineProps> = ({
             >
                 <div className="w-full">
                     <h2 className="text-3xl md:text-5xl text-center font-extrabold mb-16">
-                        Why Choose <span>InterviewMate AI?</span>
+                        Why Choose <span>InterviewMate?</span>
                     </h2>
 
 

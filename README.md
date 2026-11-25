@@ -31,7 +31,7 @@ InterviewMate runs a mock interview with an AI interviewer that asks from your r
 
 | Set up an interview | Check a resume against a job |
 |---|---|
-| <img src="docs/screenshots/simulation-setup.png" alt="Simulation Settings dialog with role, interview type, difficulty, duration and resume"> | <img src="docs/screenshots/ats-checker.png" alt="ATS Checker with a score of 75, a JD match of 78 percent, matched skills, missing keywords and suggestions"> |
+| <img src="docs/screenshots/simulation-setup.png" alt="Simulation Settings dialog with role, interview type, difficulty, duration and resume"> | <img src="docs/screenshots/ats-checker.png" alt="ATS Checker with a score of 71, a JD match of 78 percent, matched skills, missing keywords and suggestions"> |
 
 | Edit a resume | Find jobs |
 |---|---|
@@ -46,11 +46,11 @@ These were taken from the app running locally with fictional data and a drawing 
 - Upload a job description and choose an interview type (HR, projects, role, DSA or hybrid), a difficulty, and 3 to 17 questions.
 - Answer by voice or by typing. Recorded answers are transcribed for you to check before you send them.
 - Hear each question read aloud.
-- Get a rating out of 10, four scores and next steps, and read past interviews and transcripts in **Reviews**.
+- Get a rating out of 10, four scores and next steps, with a voice emotion reading of your recorded answers. Past interviews and transcripts are in **Reviews**.
 
 **Prepare a resume**
 
-- Turn a PDF resume into editable fields and download it as LaTeX.
+- Turn a PDF resume into editable fields, or start from scratch, and download it as PDF or LaTeX.
 - Compare a resume with a job description or a role name for an ATS score, missing keywords and suggestions.
 
 **Find work and track progress**
@@ -60,15 +60,15 @@ These were taken from the app running locally with fictional data and a drawing 
 
 ## Architecture
 
-The browser talks to an Express API for accounts and saved data, and directly to two Python services during an interview. A third Python service scores resumes and is called only by the API.
+The browser talks to an Express API for accounts and saved data, and directly to two Python services during an interview, using a token from the API. A third Python service scores resumes and is called only by the API.
 
 ```mermaid
 flowchart LR
     browser["Browser<br/>React + Vite"]
 
     browser -->|"JWT cookie"| api["Express API"]
-    browser -->|"no login check"| interview["Interview service"]
-    browser -->|"no login check"| emotion["Emotion service"]
+    browser -->|"short-lived token"| interview["Interview service"]
+    browser -->|"short-lived token"| emotion["Emotion service"]
 
     api --> mongo[("MongoDB")]
     api --> ext["Groq, Cloudinary,<br/>Gmail, RapidAPI"]
@@ -105,7 +105,7 @@ sequenceDiagram
     I-->>B: rating, 4 scores, notes
 ```
 
-The browser then saves the transcript and feedback through the Express API. The [session states](docs/mock-interviews.md#session-states) and the [ATS analysis](docs/resume-and-ats.md#how-the-analysis-runs) have their own diagrams.
+The browser then saves the transcript, feedback and averaged voice reading through the Express API. The [session states](docs/mock-interviews.md#session-states) and the [ATS analysis](docs/resume-and-ats.md#how-the-analysis-runs) have their own diagrams.
 
 ## Tech stack
 
@@ -167,27 +167,16 @@ cp exampleENV.txt .env
 .venv\Scripts\python interview_service.py
 ```
 
-**4. Start the frontend** in a third terminal, from the project folder.
-
-bash:
+**4. Start the frontend** in a third terminal, from the project folder. Same commands in bash and PowerShell.
 
 ```bash
 cd frontend
 npm ci
-printf '%s\n' 'VITE_API_BASE_URL=http://localhost:8000/api' 'VITE_INTERVIEW_API=http://localhost:5000/api' 'VITE_EMOTION_API=http://localhost:8090/api' > .env.local
+cp exampleENVLOCAL.txt .env.local
 npm run dev
 ```
 
-PowerShell:
-
-```powershell
-cd frontend
-npm ci
-"VITE_API_BASE_URL=http://localhost:8000/api", "VITE_INTERVIEW_API=http://localhost:5000/api", "VITE_EMOTION_API=http://localhost:8090/api" | Set-Content -Encoding ascii .env.local
-npm run dev
-```
-
-**5. Open <http://localhost:8080>.** Choose **Sign In**, click the **Demo Account** box, and choose **Sign In**. Under **Simulations**, use **Upload JD** to add a job description, then **Start Simulation**.
+**5. Open <http://localhost:8080>.** Choose **Sign In** and click the **Demo Account** box. Under **Simulations**, use **Upload JD** to add a job description, then **Start Simulation**.
 
 If a step fails, see [Troubleshooting](docs/troubleshooting.md).
 
@@ -207,13 +196,12 @@ If a step fails, see [Troubleshooting](docs/troubleshooting.md).
 
 ## Honest limits
 
-- **Access control is incomplete.** The interview and emotion services have no login check, and the API has not had a security review. Do not upload anything confidential.
-- **Voice emotion is not shown.** Recordings are analysed, but the result is dropped. Nothing about emotion affects your score.
-- **Video is not recorded.** The camera is only a mirror for you.
-- **An interview can end early** if the interviewer says "thank you", and recorded answers are saved without the question they answer. See [known problems](docs/mock-interviews.md#known-problems).
+- **Not security reviewed.** Do not upload anything confidential. The interview and emotion services check for a login only when `SERVICE_TOKEN_SECRET` is set.
 - **Scores are estimates.** Feedback comes from a language model. The ATS Score is text similarity, not the result of a real applicant tracking system. Neither has been measured for accuracy.
-- **Live sessions are files on one server.** The interview service does not scale past one process, and sessions are lost when its container is rebuilt.
-- **Desktop, light theme and PDF only.** Pages are laid out for desktop screens, the moon icon does nothing, and DOCX files are not parsed.
+- **Voice emotion is experimental.** The models' accuracy has not been measured here, and the reading does not affect your score.
+- **Video is not recorded.** The camera is only a mirror for you.
+- **Live sessions are files on one server.** The interview service does not scale past one process, and unfinished sessions are lost when its container is rebuilt.
+- **Desktop, light theme and PDF only.** Pages are laid out for desktop screens, and other resume formats are not parsed.
 - **There are no automated tests.**
 
 ## Author

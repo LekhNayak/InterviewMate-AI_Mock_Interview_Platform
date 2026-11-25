@@ -9,9 +9,10 @@ import profileimg from "@/assets/profile.jpg";
 import InterviewCalendar from "../profile/interviewcalender";
 import CodeforcesCard from "../progress/codeforces";
 import LeetCodeCard from "../progress/leetcode";
+import type { User } from "@/types";
 
 export default function DashboardHome() {
-    const [mongoUser, setMongoUser] = useState<any>(null);
+    const [mongoUser, setMongoUser] = useState<User | null>(null);
     const [editMode, setEditMode] = useState(false);
     const [profileForm, setProfileForm] = useState({
         name: "",
@@ -93,12 +94,12 @@ export default function DashboardHome() {
                 return;
             }
 
-            const updatedUser = { ...mongoUser, ...payload };
+            const updatedUser: User = data.user;
             setMongoUser(updatedUser);
             localStorage.setItem("user", JSON.stringify(updatedUser));
             setEditMode(false);
             toast.success("Profile updated successfully");
-        } catch (err) {
+        } catch {
             toast.error("Something went wrong while updating");
         }
     };
@@ -106,7 +107,7 @@ export default function DashboardHome() {
 
     const displayLimit = 5;
     return (
-        <div className="flexbg-white gap-4 p-2 "
+        <div className="flex bg-white gap-4 p-2 "
             style={{ height: "calc(100vh - 5rem)" }}>
             <div className="flex gap-4 text-gray-900 w-full">
                 {/* Left Column */}
@@ -189,7 +190,7 @@ export default function DashboardHome() {
 
                     {/* GitHub / Interview Calendar */}
                     <div className="flex-1">
-                        <InterviewCalendar userId={mongoUser?._id} />
+                        <InterviewCalendar userId={mongoUser?._id || ""} />
                     </div>
 
                 </div>

@@ -1,21 +1,18 @@
 const ATS = require('../models/ats.model');
 const JobDescription = require('../models/jd.model');
 const ParsedResume = require('../models/parser.model');
+const { canReadJd, jdToText } = require('../utils/jdText');
 const axios = require('axios');
 const FormData = require('form-data');
 
 async function callMLService(jd_text, pdfUrl) {
-    console.log('[ATS] Downloading PDF from:', pdfUrl);
     const pdfRes = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 20000 });
-    console.log('[ATS] PDF downloaded, size:', pdfRes.data.byteLength, 'bytes');
-
     const pdfBuffer = Buffer.from(pdfRes.data);
 
     const form = new FormData();
     form.append('jd_text', jd_text);
     form.append('file', pdfBuffer, { filename: 'resume.pdf', contentType: 'application/pdf' });
 
-    console.log('[ATS] Sending to ML service:', process.env.ML_SERVER);
     try {
         const mlResponse = await axios.post(`${process.env.ML_SERVER}/api/analyze`, form, {
             headers: form.getHeaders(),
@@ -30,6 +27,35 @@ async function callMLService(jd_text, pdfUrl) {
     }
 }
 
+// The user's own resume, or null. Also answers the request when it is unusable.
+async function findUsableResume(req, res, resumeId) {
+    const resume = await ParsedResume.findOne({ _id: resumeId, userId: req.user._id });
+    if (!resume) {
+        res.status(404).json({ success: false, error: 'Resume not found.' });
+        return null;
+    }
+    if (!resume.pdfUrl) {
+        res.status(400).json({ success: false, error: 'This resume has no PDF. Upload it as a PDF to analyze it.' });
+        return null;
+    }
+    return resume;
+}
+
+const reportFields = (data) => {
+    const g = data.Gemini_JSON || {};
+    return {
+        jdMatch: g['JD Match'] || '',
+        missingKeywords: g['MissingKeywords'] || [],
+        profileSummary: g['Profile Summary'] || '',
+        technicalSkillsMatch: g['TechnicalSkillsMatch'] || [],
+        softSkillsMatch: g['SoftSkillsMatch'] || [],
+        experienceAlignment: g['ExperienceAlignment'] || '',
+        improvementSuggestions: g['ImprovementSuggestions'] || [],
+        projectsAnalysis: g['ProjectsAnalysis'] || '',
+        overallComment: g['OverallComment'] || '',
+        localAtsScore: data.local_ATS_score || 0,
+    };
+};
 
 const analyze = async (req, res) => {
     try {
@@ -42,56 +68,25 @@ const analyze = async (req, res) => {
             });
         }
 
-        const job = await JobDescription.findById(jdId).populate('uploadedBy', 'name email');
+        const job = await JobDescription.findById(jdId);
         if (!job) {
             return res.status(404).json({ success: false, error: 'Job Description not found.' });
         }
-
-        const isOwner = req.user && job.uploadedBy._id.toString() === req.user._id.toString();
-        if (!job.isPublic && !isOwner) {
+        if (!canReadJd(job, req.user)) {
             return res.status(403).json({ success: false, error: 'Access denied. Private JD.' });
         }
 
-        const jobText = `
-Job Title: ${job.title}
-Company: ${job.company}
-Location: ${job.location}
-Experience Level: ${job.experienceLevel}
-Job Type: ${job.jobType}
-Required Skills: ${(job.requiredSkills || []).join(', ')}
+        const resume = await findUsableResume(req, res, resumeId);
+        if (!resume) return;
 
-Description:
-${job.description || 'No description provided.'}
-`.trim();
-
-        const resume = await ParsedResume.findById(resumeId);
-        if (!resume) {
-            return res.status(404).json({ success: false, error: 'Resume not found.' });
-        }
-
-        const data = await callMLService(jobText, resume.pdfUrl);
-        console.log('✅ ATS Analysis Received:', data);
-
-        const g = data.Gemini_JSON || {};
+        const data = await callMLService(jdToText(job), resume.pdfUrl);
 
         const atsRecord = await ATS.create({
             user: req.user._id,
             jobDescription: jdId,
             resume: resumeId,
-            jdMatch: g["JD Match"] || "",
-            missingKeywords: g["MissingKeywords"] || [],
-            profileSummary: g["Profile Summary"] || "",
-            technicalSkillsMatch: g["TechnicalSkillsMatch"] || [],
-            softSkillsMatch: g["SoftSkillsMatch"] || [],
-            experienceAlignment: g["ExperienceAlignment"] || "",
-            improvementSuggestions: g["ImprovementSuggestions"] || [],
-            projectsAnalysis: g["ProjectsAnalysis"] || "",
-            overallComment: g["OverallComment"] || "",
-            localAtsScore: data.local_ATS_score || 0,
-            topResumes: data.BestResumesForJD || [],
+            ...reportFields(data),
         });
-
-        console.log('✅ ATS Result saved to DB:', atsRecord._id);
 
         res.status(201).json({
             success: true,
@@ -125,7 +120,7 @@ const getAllByUser = async (req, res) => {
 const getAllByResume = async (req, res) => {
     try {
         const { resumeId } = req.params;
-        const atsList = await ATS.find({ resume: resumeId })
+        const atsList = await ATS.find({ resume: resumeId, user: req.user._id })
             .populate('jobDescription', 'title company')
             .populate('user', 'name email')
             .sort({ createdAt: -1 });
@@ -144,7 +139,7 @@ const getAllByResume = async (req, res) => {
 const getAllByJD = async (req, res) => {
     try {
         const { jdId } = req.params;
-        const atsList = await ATS.find({ jobDescription: jdId })
+        const atsList = await ATS.find({ jobDescription: jdId, user: req.user._id })
             .populate('resume', 'title pdfUrl')
             .populate('user', 'name email')
             .sort({ createdAt: -1 });
@@ -163,7 +158,7 @@ const getAllByJD = async (req, res) => {
 const getATSById = async (req, res) => {
     try {
         const { id } = req.params;
-        const ats = await ATS.findById(id)
+        const ats = await ATS.findOne({ _id: id, user: req.user._id })
             .populate('user', 'name email')
             .populate('resume', 'title pdfUrl')
             .populate('jobDescription', 'title company location');
@@ -190,30 +185,18 @@ const quickAnalyze = async (req, res) => {
             });
         }
 
-        const resume = await ParsedResume.findById(resumeId);
-        if (!resume) {
-            return res.status(404).json({ success: false, error: 'Resume not found.' });
-        }
+        const resume = await findUsableResume(req, res, resumeId);
+        if (!resume) return;
 
         const jd_text = `Job Role: ${jobRole}\n\nThis position requires skills and experience relevant to the role of ${jobRole}. The candidate should demonstrate strong technical and soft skills aligned with this role.`;
 
         const data = await callMLService(jd_text, resume.pdfUrl);
-        const g = data.Gemini_JSON || {};
 
         const atsRecord = await ATS.create({
             user: req.user._id,
             resume: resumeId,
             jobRole,
-            jdMatch: g['JD Match'] || '',
-            missingKeywords: g['MissingKeywords'] || [],
-            profileSummary: g['Profile Summary'] || '',
-            technicalSkillsMatch: g['TechnicalSkillsMatch'] || [],
-            softSkillsMatch: g['SoftSkillsMatch'] || [],
-            experienceAlignment: g['ExperienceAlignment'] || '',
-            improvementSuggestions: g['ImprovementSuggestions'] || [],
-            overallComment: g['OverallComment'] || '',
-            localAtsScore: data.local_ATS_score || 0,
-            topResumes: data.BestResumesForJD || [],
+            ...reportFields(data),
         });
 
         res.status(201).json({

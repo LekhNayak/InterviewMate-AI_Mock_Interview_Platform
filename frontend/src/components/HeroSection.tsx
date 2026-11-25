@@ -142,8 +142,7 @@ const HeroSection = () => {
             >
                 <p className="text-lg md:text-xl text-muted-foreground max-w-2xl text-center mb-8">
                     Prepare for your dream job with AI-powered resume analysis, mock
-                    interviews, and personalized career insights. Your career compass for
-                    success.
+                    interviews, and job search matched to your skills.
                 </p>
                 <div className="flex justify-center gap-4 ">
                     <Button

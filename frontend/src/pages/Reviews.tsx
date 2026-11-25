@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     ArrowLeft, Calendar, ChevronDown, ChevronUp,
-    MessageSquare, TrendingUp, AlertCircle, Lightbulb, BookOpenCheck
+    MessageSquare, TrendingUp, AlertCircle, Lightbulb, BookOpenCheck, AudioLines
 } from "lucide-react";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
 import TopNav from "@/components/DashboardContent/TopNav";
+import type { EmotionSummary } from "@/types";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
@@ -26,6 +27,7 @@ interface Feedback {
     strengths: string[];
     areas_for_improvement: string[];
     recommended_next_steps: string[];
+    emotion_analysis?: EmotionSummary;
 }
 
 interface Interview {
@@ -102,7 +104,7 @@ export default function Reviews() {
         <div className="h-screen flex overflow-hidden">
             <Sidebar activeMenu="Simulations" setActiveMenu={() => navigate("/dashboard?tab=Simulations")} />
             <main className="flex-1 flex flex-col overflow-hidden">
-                <TopNav />
+                <TopNav path={["Simulations", "Reviews"]} />
                 <div className="flex-1 overflow-y-auto px-8 py-6 w-full">
                     <button
                         onClick={() => navigate("/dashboard?tab=Simulations")}
@@ -257,6 +259,22 @@ export default function Reviews() {
                                                                                 </li>
                                                                             ))}
                                                                         </ul>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Voice */}
+                                                                {iv.feedback.emotion_analysis?.answers && (
+                                                                    <div className="bg-white border border-gray-200 rounded-2xl p-4">
+                                                                        <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-gray-700">
+                                                                            <AudioLines className="h-3.5 w-3.5 text-purple-400" /> Voice Emotion Analysis
+                                                                        </div>
+                                                                        <p className="text-xs text-gray-600">
+                                                                            {[
+                                                                                iv.feedback.emotion_analysis.speaking_style && `Speaking style: ${iv.feedback.emotion_analysis.speaking_style.label} (${Math.round(iv.feedback.emotion_analysis.speaking_style.score * 100)}%)`,
+                                                                                iv.feedback.emotion_analysis.emotions_3 && `Primary emotion: ${iv.feedback.emotion_analysis.emotions_3.emotion}`,
+                                                                                iv.feedback.emotion_analysis.emotions_6 && `Detailed emotion: ${iv.feedback.emotion_analysis.emotions_6.emotion}`,
+                                                                            ].filter(Boolean).join(" · ")}
+                                                                        </p>
                                                                     </div>
                                                                 )}
                                                             </>

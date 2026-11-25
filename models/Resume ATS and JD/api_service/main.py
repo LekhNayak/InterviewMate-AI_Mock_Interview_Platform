@@ -143,7 +143,8 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
 def safe_parse_json(text: str) -> Dict[str, Any]:
     try:
         cleaned = text.strip().replace("```json", "").replace("```", "")
-        return json.loads(cleaned)
+        start, end = cleaned.find("{"), cleaned.rfind("}") + 1
+        return json.loads(cleaned[start:end])
     except Exception:
         return {"raw_text": text}
 
@@ -227,7 +228,8 @@ def get_gemini_response(resume_text: str, jd: str) -> str:
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.2,
-        max_tokens=1024,
+        max_tokens=2048,
+        response_format={"type": "json_object"},
     )
     return response.choices[0].message.content.strip()
 
@@ -321,8 +323,9 @@ def analyze_resume():
             "OverallComment": f"Evaluation failed: {str(e)}"
         }
     
-    # Get best resumes for JD
-    top_resumes = get_best_resumes_for_JD(jd_text, top_k=3)
+    # Opt-in: the results quote other people's resumes
+    include_similar = str(request.form.get("include_similar", "")).lower() == "true"
+    top_resumes = get_best_resumes_for_JD(jd_text, top_k=3) if include_similar else []
     
     # Prepare result
     result = {

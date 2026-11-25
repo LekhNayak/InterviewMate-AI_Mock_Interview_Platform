@@ -8,9 +8,46 @@ import {
     Tooltip,
 } from "recharts";
 
+interface CodeforcesUser {
+    handle: string;
+    rating?: number;
+    maxRating?: number;
+    rank?: string;
+    maxRank?: string;
+}
+
+interface RatingChange {
+    contestId: number;
+    contestName: string;
+    newRating: number;
+    ratingUpdateTimeSeconds: number;
+}
+
+interface ChartTooltipProps {
+    active?: boolean;
+    payload?: { payload: { contestName: string; date: string; rating: number } }[];
+}
+
+const RatingTooltip = ({ active, payload }: ChartTooltipProps) => {
+    if (!active || !payload?.length) return null;
+    const { contestName, date, rating } = payload[0].payload;
+    const truncatedName =
+        contestName.length > 22
+            ? contestName.substring(0, 22) + "..."
+            : contestName;
+    return (
+        <div className="bg-white border border-gray-200 rounded-md p-2 shadow-md text-[10px]">
+            <p className="font-semibold text-gray-800">{truncatedName}</p>
+            <p className="text-gray-600">Rating: {rating}</p>
+            <p className="text-gray-400">{date}</p>
+        </div>
+    );
+};
+
 export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: string }) {
-    const [data, setData] = useState<any>(null);
-    const [ratingHistory, setRatingHistory] = useState<any[]>([]);
+    const [data, setData] = useState<CodeforcesUser | null>(null);
+    const [ratingHistory, setRatingHistory] = useState<RatingChange[]>([]);
+    const [failed, setFailed] = useState(false);
 
 
     const username = useMemo(() => {
@@ -33,9 +70,12 @@ export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: str
                 if (info.status === "OK" && histData.status === "OK") {
                     setData(info.result[0]);
                     setRatingHistory(histData.result.slice(-8));
+                } else {
+                    setFailed(true);
                 }
             } catch (err) {
                 console.error("Error fetching Codeforces data:", err);
+                setFailed(true);
             }
         }
 
@@ -46,7 +86,13 @@ export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: str
     if (!data || !ratingHistory.length) {
         return (
             <div className="p-6 rounded-2xl bg-white shadow-sm border text-gray-600 text-sm">
-                Loading Codeforces data…
+                {!username
+                    ? "Add your Codeforces profile URL to see your rating."
+                    : failed
+                        ? "Codeforces data could not be loaded."
+                        : data
+                            ? "No rated Codeforces contests yet."
+                            : "Loading Codeforces data…"}
             </div>
         );
     }
@@ -59,25 +105,6 @@ export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: str
         contestId: r.contestId,
         date: new Date(r.ratingUpdateTimeSeconds * 1000).toLocaleDateString(),
     }));
-
-    // Custom tooltip
-    const CustomTooltip = ({ active, payload }: any) => {
-        if (active && payload && payload.length) {
-            const { contestName, date, rating } = payload[0].payload;
-            const truncatedName =
-                contestName.length > 22
-                    ? contestName.substring(0, 22) + "..."
-                    : contestName;
-            return (
-                <div className="bg-white border border-gray-200 rounded-md p-2 shadow-md text-[10px]">
-                    <p className="font-semibold text-gray-800">{truncatedName}</p>
-                    <p className="text-gray-600">Rating: {rating}</p>
-                    <p className="text-gray-400">{date}</p>
-                </div>
-            );
-        }
-        return null;
-    };
 
     return (
         <div className="p-4 bg-white border border-gray-200 rounded-2xl w-full h-64 flex flex-col justify-between overflow-hidden">
@@ -122,7 +149,7 @@ export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: str
                             fontSize={10}
                             tickMargin={4}
                         />
-                        <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(0,0,0,0.05)" }} />
+                        <Tooltip content={<RatingTooltip />} cursor={{ fill: "rgba(0,0,0,0.05)" }} />
                         <Bar
                             dataKey="rating"
                             radius={[4, 4, 0, 0]}

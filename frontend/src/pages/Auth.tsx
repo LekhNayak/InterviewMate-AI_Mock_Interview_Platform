@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Sparkles, ArrowLeft } from "lucide-react";
+import { errorMessage } from "@/lib/errors";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -36,7 +37,31 @@ const Auth = () => {
     const [otpSent, setOtpSent] = useState(false);
 
     const [profileModalOpen, setProfileModalOpen] = useState(false);
-    const [signupData, setSignupData] = useState<any>(null);
+    const [signupData, setSignupData] = useState({ name: "", email: "", password: "" });
+    const [demoEnabled, setDemoEnabled] = useState(false);
+
+    // The demo box is shown only when the server has a demo account.
+    useEffect(() => {
+        fetch(`${BASE_URL}/user/demo`)
+            .then(res => (res.ok ? res.json() : null))
+            .then(data => setDemoEnabled(Boolean(data?.enabled)))
+            .catch(() => setDemoEnabled(false));
+    }, []);
+
+    const handleDemo = async () => {
+        if (loading) return;
+        setLoading(true);
+        try {
+            const response = await fetch(`${BASE_URL}/user/demo-login`, { method: "POST", credentials: "include" });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || "Demo sign in failed");
+            navigate("/dashboard");
+        } catch (err) {
+            toast.error(errorMessage(err, "Something went wrong"));
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // 🟢 LOGIN HANDLER
     const handleSignIn = async (e: React.FormEvent) => {
@@ -62,8 +87,8 @@ const Auth = () => {
 
             toast.success("Login successful 🎉");
             navigate("/dashboard");
-        } catch (err: any) {
-            toast.error(err.message || "Something went wrong");
+        } catch (err) {
+            toast.error(errorMessage(err, "Something went wrong"));
         } finally {
             setLoading(false);
         }
@@ -115,8 +140,8 @@ const Auth = () => {
                 setSignupData({ name: signUpName, email: signUpEmail, password: signUpPassword });
                 setProfileModalOpen(true);
             }
-        } catch (err: any) {
-            toast.error(err.message || "Something went wrong");
+        } catch (err) {
+            toast.error(errorMessage(err, "Something went wrong"));
         } finally {
             setLoading(false);
         }
@@ -140,11 +165,11 @@ const Auth = () => {
 
                 <Card className="border border-gray-400 shadow-lg bg-white">
                     <CardHeader className="text-center">
-                        <div className="mx-auto w-12 h-12 rounded-xl flex items-center justify-center mb-4">
-                            <Sparkles className="h-6 w-6 text-primary-foreground" />
+                        <div className="mx-auto w-12 h-12 rounded-xl bg-[#252525] flex items-center justify-center mb-4">
+                            <Sparkles className="h-6 w-6 text-white" />
                         </div>
                         <CardTitle className="text-2xl font-bold">
-                            Welcome to CareerCompass AI
+                            Welcome to InterviewMate
                         </CardTitle>
                         <CardDescription>
                             Your AI-powered career preparation platform
@@ -170,16 +195,20 @@ const Auth = () => {
 
                             {/* 🟢 SIGN IN */}
                             <TabsContent value="signin" className="min-h-80">
-                                <div
-                                    className="mb-3 mt-1 flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 cursor-pointer hover:bg-amber-100 transition"
-                                    onClick={() => { setSignInEmail("lekhnayakwork@gmail.com"); setSignInPassword("123456"); }}
-                                >
-                                    <div>
-                                        <p className="text-xs font-semibold text-amber-700">Demo Account</p>
-                                        <p className="text-[11px] text-amber-600">lekhnayakwork@gmail.com · 123456</p>
-                                    </div>
-                                    <span className="text-[11px] text-amber-700 font-medium border border-amber-300 rounded-lg px-2 py-0.5">Fill</span>
-                                </div>
+                                {demoEnabled && (
+                                    <button
+                                        type="button"
+                                        disabled={loading}
+                                        className="w-full text-left mb-3 mt-1 flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 cursor-pointer hover:bg-amber-100 transition disabled:opacity-60"
+                                        onClick={handleDemo}
+                                    >
+                                        <span>
+                                            <span className="block text-xs font-semibold text-amber-700">Demo Account</span>
+                                            <span className="block text-[11px] text-amber-600">Look around without signing up. Other visitors share it.</span>
+                                        </span>
+                                        <span className="text-[11px] text-amber-700 font-medium border border-amber-300 rounded-lg px-2 py-0.5">Open</span>
+                                    </button>
+                                )}
                                 <form onSubmit={handleSignIn} className="space-y-4 flex flex-col justify-between">
                                     <div className="space-y-4">
                                         <div className="space-y-2">

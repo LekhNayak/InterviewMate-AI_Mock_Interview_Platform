@@ -5,4 +5,4 @@ exampleENV.txt
 run.md
 static/recordings/*
 static/feedback_clips/*
-data/*.log.jsonl
+data/*

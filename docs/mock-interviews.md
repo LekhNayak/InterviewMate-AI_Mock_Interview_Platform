@@ -6,7 +6,7 @@
 
 1. Open **Simulations** and choose **Upload JD** to add a job description as a PDF. Each company then gets a card.
 2. Choose **Start Simulation** on a card. From **My Uploads** the same button is called **Simulate**.
-3. Pick the role, interview type, difficulty and duration, and choose your resume. Use a PDF. The dialog also offers DOCX, but the parser only reads PDF.
+3. Pick the role, interview type, difficulty and duration, and choose your resume as a PDF. The work mode filter above the cards narrows them to Remote, Hybrid or On-site roles.
 4. Choose **Start Simulation**. The resume is parsed and saved to your resume library, then the interview page opens.
 5. Allow the camera and microphone, then choose **Start AI Interview**.
 
@@ -34,13 +34,15 @@ The first message is your introduction. After that the interviewer asks one ques
 
 ## Feedback
 
-When the interviewer closes the interview, choose **Get Feedback**, then **View Feedback**. You get a rating out of 10, a summary, strengths, areas to improve and next steps. **Get Feedback** also saves the interview.
+When the interviewer closes the interview, the feedback is fetched and saved. Choose **View Feedback** for a rating out of 10, a summary, strengths, areas to improve and next steps. If fetching it fails, **Get Feedback** tries again.
 
-Saved interviews are under **Simulations**, in the **Reviews** folder. Reviews also shows four scores (technical accuracy, communication, depth, problem solving) and the transcript.
+If you recorded answers and the emotion service is running, the feedback also shows your speaking style and emotions, averaged over those answers. This does not change your score.
+
+Saved interviews are under **Simulations**, in the **Reviews** folder. Reviews also shows four scores (technical accuracy, communication, depth, problem solving), the voice reading and the transcript.
 
 ![Reviews page showing an 8 out of 10 interview with a score breakdown, strengths, areas to improve and next steps](screenshots/reviews.png)
 
-If you leave the page before choosing **Get Feedback**, the interview does not appear in Reviews.
+If you leave the page before the feedback arrives, the interview does not appear in Reviews.
 
 ## Session states
 
@@ -55,13 +57,13 @@ stateDiagram-v2
     [*] --> W: start_interview
     W --> I: submit_intro
     I --> I: submit_answer
-    I --> C: question limit or closing phrase
-    C --> C: feedback JSON invalid, resend
+    I --> C: question limit or goodbye
+    C --> C: feedback fails, try again
     C --> F: feedback JSON valid
     F --> [*]: get_feedback
 ```
 
-The service ends the interview when the question limit is reached, or earlier if a reply contains "thank you", "conclude", "that's a wrap", "best of luck" or "pleasure speaking".
+The service ends the interview when the question limit is reached. It also ends it earlier if a reply asks nothing and says goodbye, with a phrase such as "best of luck" or "thank you for your time".
 
 ## What happens when something fails
 
@@ -69,17 +71,10 @@ The service ends the interview when the question limit is reached, or earlier if
 |---|---|
 | Camera or microphone refused | An **Enable Media** screen. The interview cannot start. |
 | Transcription fails | A message in the chat. Type the answer instead. |
-| Emotion service down | Nothing visible. Its result is not used. |
+| Emotion service down | The feedback has no voice section |
 | Sarvam fails or has no key | The reply arrives as text without audio. |
-| Groq fails on a question | The error is shown in the chat. Send the answer again. |
-| Feedback is cut off or is not JSON | The last answer returns an error. Send another message to try again. |
-
-## Known problems
-
-- A question that contains "thank you" ends the interview early.
-- Feedback is not fetched on its own. Use the **Get Feedback** button.
-- For recorded answers, the saved transcript shows "Transcription received..." in place of the question. Typed answers are saved correctly.
-- Feedback is limited to 350 tokens, so a long one can be cut off and fail to parse.
-- The LIVE timer is drawn behind the video and cannot be seen.
+| Groq fails on a question | The error is shown in the chat and your answer goes back into the box. Send it again. |
+| Feedback is cut off or is not JSON | The service asks the model once more. If that fails too, use **Get Feedback**. |
+| Saving to Reviews fails | A message says so. The feedback stays on the page. |
 
 The API for this service is in [API reference](api.md#interview-service).

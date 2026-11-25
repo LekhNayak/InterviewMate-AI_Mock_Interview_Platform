@@ -6,7 +6,7 @@ Run this after starting the API server to test the endpoints
 import requests
 import json
 
-BASE_URL = "http://localhost:8080/api"
+BASE_URL = "http://localhost:8090/api"
 
 
 def pretty_print_speaking_style(predictions):
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     try:
         test_health_check()
     except requests.exceptions.ConnectionError:
-        print("Error: Could not connect to API. Make sure the server is running on http://localhost:8080")
+        print("Error: Could not connect to API. Make sure the server is running on http://localhost:8090")
         print("Start the server with: python main.py")
         exit(1)
 

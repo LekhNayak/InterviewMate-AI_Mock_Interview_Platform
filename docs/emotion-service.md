@@ -2,7 +2,7 @@
 
 A Flask API in `models/Audio_Emotion_Analysis` that predicts emotion, gender and speaking style from a recording.
 
-**The app does not show its output.** During an interview the browser sends each recorded answer here and then discards the result. The feedback dialog has a Voice Emotion Analysis section, but nothing fills it. You can call the API directly.
+During an interview the browser sends each recorded answer here. The speaking style and emotions are averaged and shown in the feedback and in Reviews. They do not change the score. The app does not ask for the gender prediction.
 
 ## Run
 
@@ -10,7 +10,7 @@ Follow [Setup](setup.md#emotion-service). It listens on port 8090 and loads all 
 
 ## Endpoints
 
-All are under `http://localhost:8090/api` and take `multipart/form-data` with a `file` field.
+All are under `http://localhost:8090/api` and take `multipart/form-data` with a `file` field. If `SERVICE_TOKEN_SECRET` is set, every endpoint except `/health` needs an `Authorization: Bearer` token from `GET /api/user/service-token`.
 
 | Method | Path | Extra fields | Returns |
 |---|---|---|---|
@@ -67,9 +67,7 @@ The numbers above only show the shape of a reply.
 
 ## Limits
 
-- Formats: wav, mp3, ogg and webm, up to 9 MB. The error for larger files says 4 MB.
-- `/predict` and `/predict/emotions` convert other formats to WAV with the bundled ffmpeg. The other endpoints do not.
-- All requests share one `audio` folder, and each request empties it first. Two requests at the same time can delete each other's file.
-- There is no login check.
-- `test_api.py` calls port 8080. Change `BASE_URL` to port 8090 before you run it.
+- Formats: wav, mp3, ogg and webm, up to 9 MB. Other formats than WAV are converted with the bundled ffmpeg.
+- Each request uses its own temporary folder, which is deleted afterwards.
+- `test_api.py` calls port 8090 without a token, so leave `SERVICE_TOKEN_SECRET` empty when you run it.
 - The accuracy of the models has not been measured in this repository.

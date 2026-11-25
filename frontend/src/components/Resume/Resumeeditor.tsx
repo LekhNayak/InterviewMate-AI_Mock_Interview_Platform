@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { Resume } from "../../types";
+import type { Education, Project, Resume } from "../../types";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2 } from "lucide-react";
 
@@ -10,22 +10,31 @@ interface Props {
 
 const tabs = ["About", "Education", "Skills", "Projects", "Activities"];
 
+const SKILL_FIELDS = ["languages", "frameworks", "other"] as const;
+
+/** Keeps what was typed, so that a comma does not disappear before the next word. */
+const CommaListInput: React.FC<{ value: string[]; placeholder: string; onChange: (list: string[]) => void }> = ({ value, placeholder, onChange }) => {
+    const [text, setText] = useState(value.join(", "));
+
+    return (
+        <input
+            type="text"
+            placeholder={placeholder}
+            value={text}
+            onChange={(e) => {
+                setText(e.target.value);
+                onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean));
+            }}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:ring-1 focus:ring-gray-300 outline-none text-sm"
+        />
+    );
+};
+
 const ResumeEditor: React.FC<Props> = ({ resume, onChange }) => {
     const [activeTab, setActiveTab] = useState("About");
 
     const updateField = <K extends keyof Resume>(key: K, value: Resume[K]) => {
         onChange({ ...resume, [key]: value });
-    };
-
-    const updateNested = <T,>(path: string[], value: T) => {
-        const updated = { ...resume };
-        let current: any = updated;
-        for (let i = 0; i < path.length - 1; i++) {
-            if (!current[path[i]]) current[path[i]] = {};
-            current = current[path[i]];
-        }
-        current[path[path.length - 1]] = value;
-        onChange(updated);
     };
 
     const autoResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -65,21 +74,21 @@ const ResumeEditor: React.FC<Props> = ({ resume, onChange }) => {
                             className="space-y-4"
                         >
                             <div className="bg-[#fcfcfc] border border-gray-200 rounded-xl p-4 space-y-4 hover:border-gray-400 transition">
-                                {[
-                                    { label: "Full Name", path: ["header", "name"], value: resume.header.name || "" },
-                                    { label: "Phone", path: ["header", "phone"], value: resume.header.phone || "" },
-                                    { label: "Email", path: ["header", "email"], value: resume.header.email || "" },
-                                    { label: "GitHub URL", path: ["header", "github"], value: resume.header.github || "" },
-                                ].map((f, i) => (
-                                    <div key={i} className="space-y-1">
+                                {([
+                                    { label: "Full Name", field: "name" },
+                                    { label: "Phone", field: "phone" },
+                                    { label: "Email", field: "email" },
+                                    { label: "GitHub URL", field: "github" },
+                                ] as const).map((f) => (
+                                    <div key={f.field} className="space-y-1">
                                         <label className="block text-[.8rem] text-gray-400">
                                             {"-- " + f.label}
                                         </label>
                                         <input
                                             type="text"
                                             placeholder={f.label}
-                                            value={f.value}
-                                            onChange={(e) => updateNested(f.path, e.target.value)}
+                                            value={resume.header?.[f.field] || ""}
+                                            onChange={(e) => updateField("header", { ...resume.header, [f.field]: e.target.value })}
                                             className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:ring-1 focus:ring-gray-300 outline-none text-sm"
                                         />
                                     </div>
@@ -156,10 +165,10 @@ const ResumeEditor: React.FC<Props> = ({ resume, onChange }) => {
                                                 <input
                                                     type="text"
                                                     placeholder={label}
-                                                    value={(edu as any)[field] || ""}
+                                                    value={edu[field as keyof Education] || ""}
                                                     onChange={(e) => {
                                                         const updated = [...(resume.education || [])];
-                                                        (updated[i] as any)[field] = e.target.value;
+                                                        updated[i] = { ...updated[i], [field]: e.target.value };
                                                         updateField("education", updated);
                                                     }}
                                                     className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:ring-1 focus:ring-gray-300 outline-none text-sm"
@@ -182,23 +191,14 @@ const ResumeEditor: React.FC<Props> = ({ resume, onChange }) => {
                             transition={{ duration: 0.25, ease: "easeOut" }}
                             className="bg-[#fcfcfc] border border-gray-200 rounded-xl p-4 space-y-4 hover:border-gray-400 transition"
                         >
-                            {["languages", "frameworks", "other"].map((field) => (
+                            {SKILL_FIELDS.map((field) => (
                                 <div key={field} className="space-y-1">
                                     <label className="block text-[.8rem] text-gray-400">{"-- " + field}</label>
-                                    <input
-                                        type="text"
+                                    <CommaListInput
+                                        key={`${resume._id}-${field}`}
                                         placeholder={`Enter ${field} (comma-separated)`}
-                                        value={((resume.skills as any)[field] || []).join(", ")}
-                                        onChange={(e) =>
-                                            updateNested(
-                                                ["skills", field],
-                                                e.target.value
-                                                    .split(",")
-                                                    .map((s) => s.trim())
-                                                    .filter(Boolean)
-                                            )
-                                        }
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:ring-1 focus:ring-gray-300 outline-none text-sm"
+                                        value={resume.skills?.[field] || []}
+                                        onChange={(list) => updateField("skills", { ...resume.skills, [field]: list })}
                                     />
                                 </div>
                             ))}
@@ -247,10 +247,10 @@ const ResumeEditor: React.FC<Props> = ({ resume, onChange }) => {
                                                 <input
                                                     type="text"
                                                     placeholder={label}
-                                                    value={(proj as any)[field] || ""}
+                                                    value={proj[field as Exclude<keyof Project, "points">] || ""}
                                                     onChange={(e) => {
                                                         const updated = [...(resume.projects || [])];
-                                                        (updated[i] as any)[field] = e.target.value;
+                                                        updated[i] = { ...updated[i], [field]: e.target.value };
                                                         updateField("projects", updated);
                                                     }}
                                                     className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:ring-1 focus:ring-gray-300 outline-none text-sm"

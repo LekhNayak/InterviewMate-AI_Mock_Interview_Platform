@@ -1,5 +1,5 @@
-const fs = require('fs');
-const pdfParse = require('pdf-parse');
+const { extractPdfText } = require('../utils/pdfText');
+const { ownerId, canReadJd, jdToText } = require('../utils/jdText');
 const { uploadBuffer } = require('../config/cloudinary');
 const JobDescription = require('../models/jd.model');
 const Groq = require('groq-sdk');
@@ -13,15 +13,11 @@ const parseJobDescription = async (req, res) => {
             return res.status(400).json({ success: false, error: 'No file uploaded' });
         }
 
-        const fileBuffer = req.file.buffer || fs.readFileSync(req.file.path);
+        const fileBuffer = req.file.buffer;
         const safePublicId = `${Date.now()}_${req.file.originalname.replace(/\.[^.]+$/, '').replace(/\s+/g, '_')}`;
         const fileUrl = await uploadBuffer(fileBuffer, 'job_descriptions', safePublicId);
 
-        console.log('✅ File uploaded to Cloudinary:', fileUrl);
-
-        const pdfData = await pdfParse(fileBuffer);
-        const text = truncateForBudget(pdfData.text);
-        console.log('✅ Extracted text from Job Description PDF');
+        const text = truncateForBudget(await extractPdfText(fileBuffer));
 
         const completion = await groq.chat.completions.create({
             model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
@@ -71,15 +67,12 @@ ${text}`,
             title: parsedJd.title || 'Untitled JD',
             company: parsedJd.company || 'Unknown',
             location: parsedJd.location || 'Not specified',
-            description: parsedJd.description || '',
+            description: parsedJd.description || undefined,
             requiredSkills: parsedJd.requiredSkills || [],
-            experienceLevel: parsedJd.experienceLevel || 'Entry',
             jobType: parsedJd.jobType || 'On-site',
             uploadedBy: req.user._id,
             isPublic: req.body.isPublic || false,
         });
-
-        console.log('✅ JD Parsed and Saved:', newJd.title);
 
         res.status(201).json({
             success: true,
@@ -140,7 +133,7 @@ const deleteJd = async (req, res) => {
         if (!job)
             return res.status(404).json({ success: false, error: 'Job not found' });
 
-        if (job.uploadedBy.toString() !== req.user._id.toString()) {
+        if (ownerId(job) !== String(req.user._id)) {
             return res.status(403).json({ success: false, error: 'Unauthorized action' });
         }
 
@@ -155,7 +148,7 @@ const deleteJd = async (req, res) => {
 
 const getJdAsString = async (req, res) => {
     try {
-        const job = await JobDescription.findById(req.params.id).populate('uploadedBy', 'name email');
+        const job = await JobDescription.findById(req.params.id);
 
         if (!job) {
             return res.status(404).json({
@@ -164,32 +157,16 @@ const getJdAsString = async (req, res) => {
             });
         }
 
-        // 🧠 Allow access if JD is public or belongs to the logged-in user
-        const isOwner = req.user && job.uploadedBy._id.toString() === req.user._id.toString();
-
-        if (!job.isPublic && !isOwner) {
+        if (!canReadJd(job, req.user)) {
             return res.status(403).json({
                 success: false,
                 error: 'Access denied. This job description is private.',
             });
         }
 
-        // 📝 Combine the job data into a readable string
-        const jobText = `
-Job Title: ${job.title}
-Company: ${job.company}
-Location: ${job.location}
-Experience Level: ${job.experienceLevel}
-Job Type: ${job.jobType}
-Required Skills: ${(job.requiredSkills || []).join(', ')}
-
-Description:
-${job.description || 'No description provided.'}
-    `.trim();
-
         // 🧾 Send plain text response
         res.setHeader('Content-Type', 'text/plain');
-        res.status(200).send(jobText);
+        res.status(200).send(jdToText(job));
     } catch (error) {
         console.error('❌ Error fetching job description as string:', error);
         res.status(500).json({

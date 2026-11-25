@@ -50,7 +50,7 @@ export default function Dashboard() {
         <div className="min-h-screen flex">
             <Sidebar activeMenu={activeMenu} setActiveMenu={handleMenuChange} />
             <main className="flex-1 overflow-hidden flex flex-col">
-                <TopNav />
+                <TopNav path={[activeMenu || "Dashboard"]} />
                 {renderContent()}
             </main>
         </div>

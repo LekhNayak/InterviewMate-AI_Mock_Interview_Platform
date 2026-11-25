@@ -11,6 +11,8 @@ import {
     Briefcase,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { clearServiceToken } from "@/lib/serviceToken";
+import type { User } from "@/types";
 
 interface SidebarProps {
     activeMenu: string;
@@ -20,7 +22,7 @@ interface SidebarProps {
 export default function Sidebar({ activeMenu, setActiveMenu }: SidebarProps) {
     const [expanded, setExpanded] = useState(true);
     const [showLogout, setShowLogout] = useState(false);
-    const [mongoUser, setMongoUser] = useState<any>(null);
+    const [mongoUser, setMongoUser] = useState<User | null>(null);
     const navigate = useNavigate();
 
 
@@ -44,8 +46,14 @@ export default function Sidebar({ activeMenu, setActiveMenu }: SidebarProps) {
         fetchUser();
     }, []);
 
-    // ✅ Handle logout for both
     const handleLogout = async () => {
+        try {
+            // The session cookie is HTTP-only, so only the server can clear it.
+            await fetch(`${API}/user/logout`, { method: "PUT", credentials: "include" });
+        } catch (err) {
+            console.error("Logout request failed:", err);
+        }
+        clearServiceToken();
         localStorage.removeItem("user");
 
         navigate("/auth");
@@ -60,8 +68,7 @@ export default function Sidebar({ activeMenu, setActiveMenu }: SidebarProps) {
     const displayEmail =
         mongoUser?.email || "guest@example.com";
 
-    const photo =
-        mongoUser?.avatar || "https://placehold.co/40x40?text=👤";
+    const initial = displayName.charAt(0).toUpperCase();
 
     const menu = [
         { label: "Dashboard", icon: LayoutDashboard },
@@ -133,11 +140,12 @@ export default function Sidebar({ activeMenu, setActiveMenu }: SidebarProps) {
                             className={`flex items-center gap-3 cursor-pointer rounded-xl hover:bg-gray-100 transition ${expanded ? "px-3 py-2" : "p-2 px-1 justify-center"
                                 }`}
                         >
-                            <img
-                                src={photo}
-                                alt="profile"
-                                className="w-6 h-6 rounded-full object-cover"
-                            />
+                            <span
+                                aria-hidden
+                                className="w-6 h-6 shrink-0 rounded-full bg-gray-300 text-gray-700 text-xs font-semibold flex items-center justify-center"
+                            >
+                                {initial}
+                            </span>
                             {expanded && (
                                 <div className="flex flex-col">
                                     <p className="text-sm font-medium leading-tight">

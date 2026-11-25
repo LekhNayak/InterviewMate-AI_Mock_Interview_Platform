@@ -26,13 +26,13 @@ The API only accepts browser requests from `http://localhost:8080` and the produ
 
 | Feature | Services running | Keys |
 |---|---|---|
-| Sign in with the demo account | Backend, frontend | MongoDB. `GROQ_API_KEY` must not be empty or the backend will not start. |
+| Sign in with the demo account | Backend, frontend | MongoDB, `DEMO_EMAIL`. `GROQ_API_KEY` must not be empty or the backend will not start. |
 | Create an account | Backend, frontend | `EMAIL_USER`, `EMAIL_PASS` |
 | Upload a resume or job description | Backend, frontend | Groq, Cloudinary |
 | Mock interview | Backend, frontend, interview | Groq, Cloudinary. Sarvam for the spoken voice. |
 | ATS Checker | Backend, frontend, ATS | Groq, Cloudinary |
 | Find Jobs | Backend, frontend | RapidAPI |
-| Voice analysis requests | Emotion | None. Results are not shown in the app, see [Emotion service](emotion-service.md). |
+| Voice emotion in feedback | Emotion, with the mock interview services | None |
 
 ## Express API
 
@@ -57,6 +57,8 @@ Edit `backend/.env`:
 | `EMAIL_USER`, `EMAIL_PASS` | Gmail address and app password. The mailer uses Gmail only. |
 | `ML_SERVER` | `http://localhost:6050` |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary account that stores the PDFs |
+| `DEMO_EMAIL` | Account opened by the **Demo Account** box. Leave empty to hide the box. |
+| `SERVICE_TOKEN_SECRET` | Optional. See [Service tokens](#service-tokens). |
 | `NODE_ENV` | Leave unset locally. `production` makes the login cookie `Secure` and `SameSite=None`, which needs HTTPS. |
 
 Create the demo account, then start the server:
@@ -66,9 +68,9 @@ node seedDemoUser.js
 npm run dev
 ```
 
-`seedDemoUser.js` creates the account behind the **Demo Account** box on the sign-in page. Running it again resets its password. The email and password are in that file, so do not run it against a database you care about.
+`seedDemoUser.js` creates the account named by `DEMO_EMAIL`. It gets a random password unless you set `DEMO_PASSWORD`, and running it again resets the password. Visitors open it without one: the **Demo Account** box asks the server for a session. The demo account cannot be deleted and its password cannot be changed in the app.
 
-`seedSimulations.js` adds one public job description. It uses a fixed owner id that will not exist in your database, so uploading a JD in the app is the better option.
+`seedSimulations.js` adds one public job description owned by the demo account.
 
 Check the server:
 
@@ -110,10 +112,12 @@ Fill in `.env` before the last command:
 | `GROQ_MODEL` | `qwen/qwen3.6-27b` |
 | `SARVAM_API_KEY` | Sarvam key for the interviewer's voice. Without it, interviews run as text. |
 | `PORT` | `5000` |
+| `SERVICE_TOKEN_SECRET` | Optional. See [Service tokens](#service-tokens). |
+| `FLASK_DEBUG` | Optional. `1` turns on the Flask debugger, which runs code for anyone who can reach the port. Never set it on a shared network. |
 
-This service writes sessions to `data/*.json` and audio to `static/recordings/`. Those files are tracked by git, so a local run shows up in `git status`. Do not commit them.
+This service writes sessions to `data/*.json` and audio to `static/recordings/`. Both are gitignored.
 
-Running the file directly turns on Flask debug mode and listens on all network interfaces. Use gunicorn on any shared or public network, as the Dockerfile does.
+Running the file directly uses Flask's development server on all network interfaces. Use gunicorn on any shared or public network, as the Dockerfile does.
 
 ## ATS service
 
@@ -131,30 +135,37 @@ The install includes PyTorch and is large. The first analysis downloads the `all
 
 ## Emotion service
 
-Same steps in `models/Audio_Emotion_Analysis`. The last command runs `main.py`. There is no `.env` to copy. `PORT` is optional and defaults to `8090`.
+Same steps in `models/Audio_Emotion_Analysis`. The last command runs `main.py`. `.env` is optional and holds only `SERVICE_TOKEN_SECRET`. `PORT` is optional and defaults to `8090`.
 
-Run it from its own folder, because it loads the `.h5` models by relative path. Each request clears the `audio` folder next to it, which deletes the two sample files that are tracked by git.
+Run it from its own folder, because it loads the `.h5` models by relative path.
 
 ## Frontend
 
 ```bash
 cd frontend
 npm ci
+cp exampleENVLOCAL.txt .env.local
 ```
 
-Create `frontend/.env.local` with all three variables. `exampleENVLOCAL.txt` lists only the first.
-
-```
-VITE_API_BASE_URL=http://localhost:8000/api
-VITE_INTERVIEW_API=http://localhost:5000/api
-VITE_EMOTION_API=http://localhost:8090/api
-```
+The file sets `VITE_API_BASE_URL`, `VITE_INTERVIEW_API` and `VITE_EMOTION_API` to the local ports above.
 
 ```bash
 npm run dev
 ```
 
-Vite reads these values when it starts, so restart it after a change. `npm run build` makes a production build. `npm run lint` runs ESLint, which currently reports errors, mostly uses of `any`.
+Vite reads these values when it starts, so restart it after a change. `npm run build` makes a production build. `npm run lint` runs ESLint.
+
+## Service tokens
+
+The browser calls the interview and emotion services directly. To limit them to signed-in users, set the same `SERVICE_TOKEN_SECRET` (32 characters or more) in three places:
+
+| File | Service |
+|---|---|
+| `backend/.env` | Express API, which issues the tokens |
+| `models/Interview api_service/.env` | Interview service |
+| `models/Audio_Emotion_Analysis/.env` | Emotion service |
+
+The API gives a signed-in user a token that lasts 3 hours, and the services reject requests without one. An interview session can then be read only by the user who started it. If the variable is empty, the services accept every request and print a warning when they start.
 
 ## If something fails
 

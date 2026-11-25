@@ -45,6 +45,13 @@ const interviewSchema = new mongoose.Schema({
         strengths:              [{ type: String }],
         areas_for_improvement:  [{ type: String }],
         recommended_next_steps: [{ type: String }],
+        // Average of the recorded answers. Absent when nothing was recorded.
+        emotion_analysis: {
+            answers: { type: Number },
+            speaking_style: { label: String, score: Number },
+            emotions_3: { emotion: String, confidence: Number },
+            emotions_6: { emotion: String, confidence: Number },
+        },
     },
 }, { timestamps: true });
 

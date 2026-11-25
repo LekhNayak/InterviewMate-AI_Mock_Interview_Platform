@@ -18,11 +18,14 @@ In the Express tables, **Login** means the `token` cookie is required. Browser c
 | POST | `/user/signup/request-otp` | No | Email a six-digit code. Body: `email`. |
 | POST | `/user/signup/complete` | No | Create the account and set the cookie. Body: `name`, `email`, `password`, `otp`. |
 | POST | `/user/login` | No | Set the cookie. Body: `email`, `password`. |
+| GET | `/user/demo` | No | Whether the demo account is available |
+| POST | `/user/demo-login` | No | Set the cookie for the demo account |
+| GET | `/user/service-token` | Yes | Token for the interview and emotion services, or `null` when `SERVICE_TOKEN_SECRET` is not set |
 | GET | `/user/profile` | Yes | Current user |
 | PUT | `/user/update` | Yes | Update name, age, gender, skills, interests and profile URLs |
-| PUT | `/user/logout` | Yes | Clear the cookie. The app's **Log Out** button does not call this. |
+| PUT | `/user/logout` | No | Clear the cookie |
 | PATCH | `/user/change-password` | Yes | Body: `currentPassword`, `newPassword` |
-| DELETE | `/user/delete` | Yes | Always answers 404, because the route has no id |
+| DELETE | `/user/delete` | Yes | Delete the account and its data |
 
 ## Resumes
 
@@ -30,8 +33,8 @@ In the Express tables, **Login** means the `token` cookie is required. Browser c
 |---|---|---|---|
 | POST | `/parser/parse` | Yes | Upload a PDF in the `file` field, parse it and save it. Optional `title`. |
 | GET | `/parser/all` | Yes | Your resumes |
-| POST | `/parser/create` | Yes | Create a resume. The owner is taken from the cookie. |
-| PUT | `/parser/update/:id` | Yes | Update your resume |
+| POST | `/parser/create` | Yes | Create a resume. Owner, id and PDF link are set by the server. |
+| PUT | `/parser/update/:id` | Yes | Update the title and content of your resume |
 | DELETE | `/parser/delete/:id` | Yes | Delete your resume |
 
 ## Job descriptions
@@ -51,9 +54,9 @@ In the Express tables, **Login** means the `token` cookie is required. Browser c
 | POST | `/ats/analyze` | Yes | Body: `resumeId`, `jdId` |
 | POST | `/ats/quick-analyze` | Yes | Body: `resumeId`, `jobRole` |
 | GET | `/ats/user` | Yes | Your results |
-| GET | `/ats/:id` | Yes | One result |
-| GET | `/ats/resume/:resumeId` | Yes | Results for a resume |
-| GET | `/ats/jd/:jdId` | Yes | Results for a job description |
+| GET | `/ats/:id` | Yes | One of your results |
+| GET | `/ats/resume/:resumeId` | Yes | Your results for a resume |
+| GET | `/ats/jd/:jdId` | Yes | Your results for a job description |
 
 ## Interviews
 
@@ -70,29 +73,30 @@ In the Express tables, **Login** means the `token` cookie is required. Browser c
 
 | Method | Path | Login | Purpose |
 |---|---|---|---|
-| POST | `/jobs/search` | Yes | Body: `role`, optional `location`, optional `apiPage` (default 1) |
+| POST | `/jobs/search` | Yes | Body: `role`, optional `location`, optional `apiPage` (default 1). Returns `jobs`, and `fetched`, the batch size before the location filter. |
 
 ## Other
 
 | Method | Path | Login | Purpose |
 |---|---|---|---|
 | GET | `/companies` | No | List companies. Not used by the app. |
-| POST | `/companies` | No | Add a company. Not used by the app. |
+| POST | `/companies` | Yes | Add a company. Not used by the app. |
 | GET | `/health` (at the root, not under `/api`) | No | Server and database state |
 
 ## Interview service
 
-No login. JSON bodies unless noted.
+JSON bodies unless noted. If `SERVICE_TOKEN_SECRET` is set, every endpoint except `/health` and the audio files needs an `Authorization: Bearer` token from `GET /user/service-token`, and a session can only be used by the user who started it.
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/health` | Status |
 | POST | `/start_interview` | Create a session |
 | POST | `/submit_intro` | Send the introduction, get the first question |
 | POST | `/submit_answer` | Send an answer, get the next question or the closing message |
 | POST | `/transcribe_audio` | Multipart `audio`. Returns `transcribed_text`. |
 | GET | `/get_session/<session_id>` | Full session, including the resume text |
 | GET | `/get_history/<session_id>` | Conversation and questions |
-| GET | `/get_feedback/<session_id>` | Feedback. 400 until the interview is completed. |
+| GET | `/get_feedback/<session_id>` | Feedback. 400 until the interview is completed, 502 if it could not be generated. |
 | GET | `/static/recordings/<filename>` | Interviewer audio (WAV) |
 
 `start_interview` requires `role`, `resume` and `jd`. Optional fields:
@@ -130,7 +134,7 @@ When the interview ends, `state` is `completed` and `action` is `end_interview`.
 | GET | `/debug/db` | Index path and document count |
 | POST | `/analyze` | Score a resume against a job description |
 
-`/analyze` takes a multipart form with `jd_text` and either a PDF `file` or a `resume_url`, or JSON with `jd_text` and `resume_url`. It returns `resume_filename`, `local_ATS_score`, `Gemini_JSON` and `BestResumesForJD`. The name `Gemini_JSON` is historical. The report comes from Groq.
+`/analyze` takes a multipart form with `jd_text` and either a PDF `file` or a `resume_url`, or JSON with `jd_text` and `resume_url`. It returns `resume_filename`, `local_ATS_score`, `Gemini_JSON` and `BestResumesForJD`, which is empty unless the form field `include_similar` is `true`. The name `Gemini_JSON` is historical. The report comes from Groq.
 
 ```bash
 curl -X POST http://localhost:6050/api/analyze -F "jd_text=Python backend engineer" -F "file=@resume.pdf"

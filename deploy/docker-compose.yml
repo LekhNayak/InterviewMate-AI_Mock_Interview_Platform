@@ -40,6 +40,10 @@ services:
   emotion:
     build:
       context: ../models/Audio_Emotion_Analysis
+    env_file:
+      # Optional: holds SERVICE_TOKEN_SECRET.
+      - path: ../models/Audio_Emotion_Analysis/.env
+        required: false
     environment:
       PORT: 8090
     restart: unless-stopped

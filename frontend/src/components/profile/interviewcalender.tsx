@@ -20,11 +20,11 @@ const colors: Record<number, string> = {
     3: "#2DA44E"
 };
 
-function normalizeDate(input: any) {
-    if (!input) return null;
+// Local date, to match the days drawn below.
+function normalizeDate(input: string) {
     const d = new Date(input);
     if (isNaN(d.getTime())) return null;
-    return d.toISOString().split("T")[0];
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // Generate month with fixed 6x7 grid
@@ -70,7 +70,7 @@ export default function InterviewCalendar({ userId }: { userId: string }) {
                 const data = await res.json();
                 if (data.success) {
                     const counts: Record<string, number> = {};
-                    data.interviews.forEach((i: any) => {
+                    data.interviews.forEach((i: { createdAt: string }) => {
                         const date = normalizeDate(i.createdAt);
                         if (!date) return;
                         counts[date] = (counts[date] || 0) + 1;

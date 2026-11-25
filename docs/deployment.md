@@ -55,15 +55,20 @@ git clone https://github.com/LekhNayak/InterviewMate-AI_Mock_Interview_Platform.
 cd interviewmate
 ```
 
-Create three `.env` files from each service's `exampleENV.txt`. They are gitignored, so write them on the server. [Setup](setup.md) explains every variable.
+Create the `.env` files from each service's `exampleENV.txt`. They are gitignored, so write them on the server. [Setup](setup.md) explains every variable.
 
 | File | Variables |
 |---|---|
-| `backend/.env` | `MONGO_URI`, `SECRET_KEY`, `GROQ_API_KEY`, `GROQ_MODEL`, `EMAIL_USER`, `EMAIL_PASS`, `RAPIDAPI_KEY`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` |
-| `models/Interview api_service/.env` | `GROQ_API_KEY`, `SARVAM_API_KEY`, `GROQ_MODEL` |
+| `backend/.env` | `MONGO_URI`, `SECRET_KEY`, `GROQ_API_KEY`, `GROQ_MODEL`, `EMAIL_USER`, `EMAIL_PASS`, `RAPIDAPI_KEY`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `DEMO_EMAIL`, `SERVICE_TOKEN_SECRET` |
+| `models/Interview api_service/.env` | `GROQ_API_KEY`, `SARVAM_API_KEY`, `GROQ_MODEL`, `SERVICE_TOKEN_SECRET` |
+| `models/Audio_Emotion_Analysis/.env` | `SERVICE_TOKEN_SECRET` |
 | `models/Resume ATS and JD/api_service/.env` | `GROQ_API_KEY`, `GROQ_MODEL` |
 
-`docker-compose.yml` sets `PORT`, `ML_SERVER` and `NODE_ENV`, and its values override those files. The emotion service needs no `.env`.
+Use the same `SERVICE_TOKEN_SECRET` in all three places, 32 random characters or more (`openssl rand -hex 32`). Without it the interview and emotion services accept requests from anyone.
+
+`DEMO_EMAIL` names the account behind the demo button. Create it once with `docker compose exec backend node seedDemoUser.js`, after step 6.
+
+`docker-compose.yml` sets `PORT`, `ML_SERVER` and `NODE_ENV`, and its values override those files.
 
 Edit `deploy/Caddyfile` and `deploy/keepalive.sh` if you use hostnames other than `api`, `interview` and `emotion` under `lekh.online`.
 
@@ -72,10 +77,9 @@ Edit `deploy/Caddyfile` and `deploy/keepalive.sh` if you use hostnames other tha
 ```bash
 cd deploy
 docker compose up -d --build
-docker compose exec backend mkdir -p tempUploads
 ```
 
-The second command is needed after every rebuild. The image leaves out `tempUploads`, and job description uploads fail with a 500 error when that folder is missing.
+The optional `.env` of the emotion service needs Docker Compose 2.24 or later.
 
 The first build is slow because TensorFlow and PyTorch are large. Watch it with `docker compose logs -f`, then check your own hostnames:
 
@@ -119,7 +123,6 @@ The API accepts browser requests only from the origins listed in [backend/src/in
 ```bash
 cd ~/interviewmate && git pull
 cd deploy && docker compose up -d --build
-docker compose exec backend mkdir -p tempUploads
 ```
 
 ## Notes
@@ -127,12 +130,12 @@ docker compose exec backend mkdir -p tempUploads
 - The ATS service is not published by Caddy. Only the backend calls it, at `http://ats:6050` on the Docker network.
 - Interview sessions, feedback files and audio live inside the container and are lost on a rebuild. Saved interviews are in MongoDB and are kept. Add a volume if you need the rest.
 - The interview service stores sessions in JSON files, so run it with one worker.
-- The interview and emotion services are public and have no login check.
+- The interview and emotion services are public. Set `SERVICE_TOKEN_SECRET` to limit them to signed-in users.
 
 ## Render
 
 `render.yaml` creates the same four services on Render's free plan. `interviewmate-emotion-service` is built from its Dockerfile, the others run natively.
 
-- Set the keys marked `sync: false` in the dashboard.
+- Set the keys marked `sync: false` in the dashboard, with the same `SERVICE_TOKEN_SECRET` on the backend, interview and emotion services.
 - Set `ML_SERVER` on the backend to the full URL of the ATS service after its first deploy.
 - The ATS and emotion services are a tight fit in 512 MB of memory. The ATS service may run out on the first analysis, and the emotion service while it starts.

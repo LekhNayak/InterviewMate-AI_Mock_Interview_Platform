@@ -1,18 +1,27 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Video, VideoOff, Mic, MicOff, PhoneOff, Send, MessageSquare, BookOpenCheck, Loader2, X, Star, TrendingUp, AlertCircle, Lightbulb } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { summarizeEmotions } from "@/lib/emotion";
+import { errorMessage } from "@/lib/errors";
+import { serviceAuthHeaders } from "@/lib/serviceToken";
+import type { EmotionResult, EmotionSummary } from "@/types";
 
 
 
 const API_BASE_URL = import.meta.env.VITE_INTERVIEW_API;
 const API_BASE_URL2 = import.meta.env.VITE_EMOTION_API;
+const BACKEND_URL = import.meta.env.VITE_API_BASE_URL;
+const EMOTION_WAIT_MS = 8000;
+// Audio URLs are returned relative to the service root, without the /api suffix.
+const SERVICE_ROOT = API_BASE_URL?.replace(/\/api\/?$/, "");
 
 // Define the state for the interview session
 type InterviewState = "initial" | "waiting_intro" | "in_interview" | "completed";
 
 // Define the structure for the interviewer's response
 interface InterviewResponse {
-    error: any;
+    error?: string;
     session_id: string;
     response: string;
     state: InterviewState;
@@ -25,35 +34,19 @@ interface InterviewResponse {
 interface ChatMessage {
     sender: "user" | "interviewer";
     text: string;
-    type: "intro" | "answer" | "question";
+    // "status" is a note from the page itself. It is not part of the interview.
+    type: "intro" | "answer" | "question" | "status";
 }
 
 // Define the structure for the final feedback
 interface Feedback {
-    overall_rating: number;
+    overall_rating: number | string;
     summary: string;
     strengths: string[];
     areas_for_improvement: string[];
     recommended_next_steps: string[];
-
-    // NEW
-    emotion_analysis?: {
-        emotions_3?: any;
-        emotions_6?: any;
-        gender?: any;
-        speaking_style?: {
-            label: string;
-            score: number;
-            features: any;
-        };
-    };
+    emotion_analysis?: EmotionSummary;
 }
-
-// // Define the structure for the transcription response
-// interface TranscriptionResponse {
-//     transcribed_text: string;
-//     error: any;
-// }
 
 
 // --- Component for Feedback Modal (Internal) ---
@@ -152,9 +145,9 @@ const FeedbackModal: React.FC<{ feedback: Feedback, onClose: () => void }> = ({ 
                                 {feedback.emotion_analysis.emotions_6 && (
                                     <p><span className="font-medium text-gray-700">Detailed Emotion:</span> {feedback.emotion_analysis.emotions_6.emotion}</p>
                                 )}
-                                {feedback.emotion_analysis.gender && (
-                                    <p><span className="font-medium text-gray-700">Gender Prediction:</span> {feedback.emotion_analysis.gender.gender}</p>
-                                )}
+                                <p className="text-gray-400 mt-1">
+                                    Averaged over {feedback.emotion_analysis.answers} recorded {feedback.emotion_analysis.answers === 1 ? "answer" : "answers"}. It does not affect your score.
+                                </p>
                             </div>
                         </div>
                     )}
@@ -176,31 +169,48 @@ const FeedbackModal: React.FC<{ feedback: Feedback, onClose: () => void }> = ({ 
 
 
 
-interface SimulationData {
+interface SimulationState {
+    company: string;
     role: string;
-    resume: string;
-    jd: string;
-    interview_level: string;
-    interview_duration: string;
+    jobDescription: string;
+    level: string;
+    duration: string;
+    interviewType: string;
+    resume: unknown;
+    jdId?: string;
+    resumeId?: string;
 }
 
-export default function WebinarUI({ simulation: _simulation }: { simulation?: SimulationData } = {}) {
+/** Pairs each answer with the question it replied to. */
+const buildTranscript = (msgs: ChatMessage[]) => {
+    const qa: { question: string; answer: string }[] = [];
+    let question = "";
+    for (const msg of msgs) {
+        if (msg.sender === "interviewer") {
+            if (msg.type === "question") question = msg.text;
+        } else if (msg.type === "intro") {
+            qa.push({ question: "Introduce yourself", answer: msg.text });
+        } else if (question) {
+            qa.push({ question, answer: msg.text });
+            question = "";
+        }
+    }
+    return qa;
+};
+
+export default function WebinarUI() {
     const location = useLocation();
-    const state = location.state as {
-        company: string;
-        role: string;
-        jobDescription: string;
-        level: string;
-        duration: string;
-        interviewType: string;
-        resume: any;
-    };
+    const state = location.state as SimulationState | null;
 
     const navigate = useNavigate();
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const chatEndRef = useRef<HTMLDivElement | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const recorderRef = useRef<MediaRecorder | null>(null);
+    const emotionsRef = useRef<EmotionResult[]>([]);
+    const pendingEmotionsRef = useRef<Promise<unknown>[]>([]);
+    const feedbackInFlightRef = useRef(false);
 
     // --- State for Media and UI ---
     const [hasMedia, setHasMedia] = useState(false);
@@ -213,8 +223,7 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
 
     // --- NEW State for Recording and Transcription ---
     const [isRecording, setIsRecording] = useState(false);
-    const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-    const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+    const [isTranscribing, setIsTranscribing] = useState(false);
 
     // --- State for Interview Logic ---
     const [sessionId, setSessionId] = useState<string | null>(null);
@@ -224,8 +233,6 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
     const [isProcessing, setIsProcessing] = useState(false);
     const [feedback, setFeedback] = useState<Feedback | null>(null);
     const [showFeedbackModal, setShowFeedbackModal] = useState(false); // New state for modal
-
-    const [, setEmotionResult] = useState<any | null>(null);
 
     // --- Time Formatting Helper ---
     const formatTime = (s: number) => {
@@ -237,22 +244,29 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
 
     // --- Media Setup and Cleanup (Initial useEffect) ---
     useEffect(() => {
+        let left = false;
+
         const initMedia = async () => {
             try {
                 // Request both video and audio access
                 const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                if (left) {
+                    // The page was closed while the permission prompt was open.
+                    s.getTracks().forEach(t => t.stop());
+                    return;
+                }
                 streamRef.current = s;
 
                 // Attach the stream to the video element
                 if (videoRef.current) {
                     videoRef.current.srcObject = s;
-                    videoRef.current.play();
+                    videoRef.current.play().catch(e => console.warn("Camera preview did not play:", e));
                 }
                 setHasMedia(true);
                 setPermissionError(null);
-            } catch (err: any) {
+            } catch (err) {
                 console.error("Media access error:", err);
-                setPermissionError(err?.message || "Permission denied. Check your browser settings.");
+                setPermissionError(errorMessage(err, "Permission denied. Check your browser settings."));
             }
         };
 
@@ -260,9 +274,15 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
 
         // Cleanup: Stop all media tracks when the component unmounts
         return () => {
+            left = true;
             if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
             if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
-            if (mediaRecorder) mediaRecorder.stop(); // Stop recorder if running
+            if (recorderRef.current) {
+                // Leaving the page discards an unfinished recording.
+                recorderRef.current.onstop = null;
+                if (recorderRef.current.state !== "inactive") recorderRef.current.stop();
+                recorderRef.current = null;
+            }
             if (audioRef.current) {
                 audioRef.current.pause();
                 audioRef.current = null;
@@ -303,6 +323,10 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
 
     // --- Core Interview Logic Functions ---
 
+    const addStatus = useCallback((text: string) => {
+        setMessages(prev => [...prev, { sender: "interviewer", text, type: "status" }]);
+    }, []);
+
     /**
      * Handles the AI's response: updates the chat, plays audio, and updates state.
      */
@@ -321,101 +345,96 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
         // 3. Play audio response if URL is provided
         if (data.audio_url) {
             // Prepend the full base URL because the audio_url is relative (e.g., /api/static/...)
-            const fullAudioUrl = `${API_BASE_URL.replace("/api", "")}${data.audio_url}`;
+            const fullAudioUrl = `${SERVICE_ROOT}${data.audio_url}`;
 
-            console.log("Attempting to play audio from FULL URL:", fullAudioUrl);
-
-            try {
-                // Stop any currently playing audio
-                if (audioRef.current) {
-                    audioRef.current.pause();
-                }
-                const audio = new Audio(fullAudioUrl);
-                audioRef.current = audio;
-                audio.onended = () => { audioRef.current = null; };
-                audio.play();
-            } catch (e) {
-                console.error("Error playing audio:", e);
-                console.warn("If audio is not playing, check browser console for CORS or network errors for URL:", fullAudioUrl);
+            // Stop any currently playing audio
+            if (audioRef.current) {
+                audioRef.current.pause();
             }
+            const audio = new Audio(fullAudioUrl);
+            audioRef.current = audio;
+            audio.onended = () => { audioRef.current = null; };
+            audio.play().catch(e => console.warn("Interviewer audio did not play:", e));
         }
     }, []);
 
     // --- NEW Audio Recording and Transcription Logic ---
 
     const startRecording = () => {
-        console.log("here")
         if (!streamRef.current || isProcessing) return;
 
         try {
             const audioTracks = streamRef.current.getAudioTracks();
             if (audioTracks.length === 0 || !audioTracks[0].enabled) {
-                setMessages(prev => [...prev, { sender: "interviewer", text: "Error: Microphone is muted or unavailable. Please enable it before recording.", type: "question" }]);
+                addStatus("Microphone is muted or unavailable. Please enable it before recording.");
                 return;
             }
 
             setInput("");
-            setAudioChunks([]);
 
             let mimeType = "audio/webm";
             if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "";
 
-            const audioStream = new MediaStream(audioTracks);
-            const recorder = new MediaRecorder(audioStream, { mimeType });
+            const recorder = new MediaRecorder(new MediaStream(audioTracks), { mimeType });
+            const chunks: Blob[] = [];
 
             recorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    setAudioChunks(prev => [...prev, event.data]);
-                }
+                if (event.data.size > 0) chunks.push(event.data);
             };
 
             recorder.onstart = () => setIsRecording(true);
-            recorder.onstop = () => setIsRecording(false);
+            recorder.onstop = () => {
+                setIsRecording(false);
+                recorderRef.current = null;
+                if (chunks.length > 0) transcribeAudio(new Blob(chunks, { type: chunks[0].type }));
+            };
 
             recorder.onerror = () => {
                 setIsRecording(false);
-                setMessages(prev => [...prev, { sender: "interviewer", text: "Recording error occurred. Please try typing your answer.", type: "question" }]);
+                addStatus("Recording error occurred. Please try typing your answer.");
             };
 
             recorder.start();
-            setMediaRecorder(recorder);
-
-            setMessages(prev => [...prev, { sender: "interviewer", text: "Recording started. Click the mic icon again to stop and transcribe.", type: "question" }]);
+            recorderRef.current = recorder;
+            addStatus("Recording started. Click the mic icon again to stop and transcribe.");
 
         } catch (error) {
             console.error("Failed to start recording:", error);
-            setMessages(prev => [...prev, { sender: "interviewer", text: "Could not start recording. Check browser permissions.", type: "question" }]);
+            addStatus("Could not start recording. Check browser permissions.");
         }
     };
 
+    // Stops the recorder, which then transcribes what it captured.
+    const stopRecording = () => recorderRef.current?.stop();
+
+    // Runs beside the interview: a failure here must never interrupt it.
     const analyzeEmotion = async (audioBlob: Blob) => {
         const formData = new FormData();
         formData.append("file", audioBlob, "user_answer.webm");
         formData.append("model_type", "mfccs");
         formData.append("emotions_3", "true");
         formData.append("emotions_6", "true");
-        formData.append("gender", "true");
 
         try {
             const res = await fetch(`${API_BASE_URL2}/predict`, {
                 method: "POST",
+                headers: await serviceAuthHeaders(),
                 body: formData,
             });
 
             const data = await res.json();
-            if (res.ok) return data.predictions;
-
-            console.error("Emotion API error:", data);
-            return null;
+            if (res.ok && data.predictions) emotionsRef.current.push(data.predictions);
+            else console.error("Emotion API error:", data);
         } catch (err) {
             console.error("Emotion analysis failed:", err);
-            return null;
         }
     };
 
 
     const transcribeAudio = async (audioBlob: Blob) => {
         setIsProcessing(true);
+        setIsTranscribing(true);
+        pendingEmotionsRef.current.push(analyzeEmotion(audioBlob));
 
         const formData = new FormData();
         formData.append("audio", audioBlob, "user_answer.webm");
@@ -423,98 +442,51 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
         try {
             const response = await fetch(`${API_BASE_URL}/transcribe_audio`, {
                 method: "POST",
+                headers: await serviceAuthHeaders(),
                 body: formData,
             });
 
             const data = await response.json();
 
-            // 🔥 NEW — Call emotion model
-            const emotionData = await analyzeEmotion(audioBlob);
-
-            // you can store it in state to show later
-            setEmotionResult(emotionData);
-
             if (response.ok && data.transcribed_text) {
                 setInput(data.transcribed_text);
-
-                setMessages(prev => [
-                    ...prev,
-                    {
-                        sender: "interviewer",
-                        text: "Transcription received. Review your answer and click 'Send'.",
-                        type: "question",
-                    },
-                ]);
+                addStatus("Transcription received. Review your answer and click 'Send'.");
             } else {
                 console.error("Transcription API error:", data.error);
-                setMessages(prev => [
-                    ...prev,
-                    {
-                        sender: "interviewer",
-                        text: `Transcription failed: ${data.error || "Unknown error"}. Please type your answer.`,
-                        type: "question",
-                    },
-                ]);
+                addStatus(`Transcription failed: ${data.error || "Unknown error"}. Please type your answer.`);
             }
         } catch (error) {
             console.error("Transcription network error:", error);
-            setMessages(prev => [
-                ...prev,
-                {
-                    sender: "interviewer",
-                    text: "Network error during transcription. Please try typing your answer.",
-                    type: "question",
-                },
-            ]);
+            addStatus("Network error during transcription. Please try typing your answer.");
         } finally {
             setIsProcessing(false);
+            setIsTranscribing(false);
         }
     };
-
-
-
-
-    const stopRecording = () => {
-        if (!mediaRecorder) return;
-
-        // Stop the media recorder. This will trigger ondataavailable and then onstop.
-        mediaRecorder.stop();
-        setMediaRecorder(null);
-        // isRecording is set to false in the recorder's onstop callback
-    };
-
-    // Effect to handle the transcription once the audio chunks are collected and recording has stopped
-    useEffect(() => {
-        if (!isRecording && audioChunks.length > 0) {
-            // Combine all chunks into a single Blob
-            const mimeType = audioChunks[0].type;
-            const audioBlob = new Blob(audioChunks, { type: mimeType });
-
-            // Clear chunks so we don't re-transcribe if state updates unexpectedly
-            setAudioChunks([]);
-
-            transcribeAudio(audioBlob);
-        }
-    }, [isRecording, audioChunks]); // Depend on isRecording and audioChunks
 
     // --- Core Interview Logic Functions ---
 
     /**
-     * Placeholder function to start a new interview session.
+     * Starts a new interview session.
      */
     const startInterview = async () => {
         if (isProcessing) return;
-        if (!state) return setPermissionError("Simulation data missing");
+        if (!state) {
+            toast.error("Choose a role and a resume first.");
+            navigate("/dashboard?tab=Simulations");
+            return;
+        }
 
         setIsProcessing(true);
         setMessages([]);
         setFeedback(null);
         setLiveTime(0);
-        console.log(state)
+        emotionsRef.current = [];
+        pendingEmotionsRef.current = [];
         try {
             const response = await fetch(`${API_BASE_URL}/start_interview`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...(await serviceAuthHeaders()) },
                 body: JSON.stringify({
                     company: state.company,
                     role: state.role,
@@ -535,19 +507,29 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
                 setMessages([{
                     sender: "interviewer",
                     text: "Welcome! Please click the microphone button to record your self-introduction (or type it in the box) and click 'Send' to begin the interview.",
-                    type: "question"
+                    type: "status"
                 }]);
             } else {
-                setPermissionError(`Failed to start interview: ${data.error}`);
+                addStatus(`The interview could not start: ${data.error}`);
             }
         } catch (error) {
             console.error("Start interview error:", error);
-            setPermissionError("Network error while starting session.");
+            addStatus("The interview could not start because the interview service did not answer.");
         } finally {
             setIsProcessing(false);
         }
     };
 
+
+    // The service did not record this message, so take it out of the chat and
+    // put it back in the box. Otherwise a retry would save the answer twice.
+    const returnUnsent = (text: string, reason: string) => {
+        setMessages(prev => {
+            const last = prev.map(m => m.sender).lastIndexOf("user");
+            return [...prev.filter((_, i) => i !== last), { sender: "interviewer", text: reason, type: "status" }];
+        });
+        setInput(text);
+    };
 
     /**
      * Main function to handle user input (Intro or Answer)
@@ -571,87 +553,92 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
 
             const response = await fetch(endpoint, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...(await serviceAuthHeaders()) },
                 body: JSON.stringify({ session_id: sessionId, text: userMessage })
             });
             const data: InterviewResponse = await response.json();
 
             if (response.ok) {
                 handleAiResponse(data);
-                if (data.state === "completed") {
-                    // Automatically trigger feedback generation after a short delay for audio playback
-                    setTimeout(() => getFeedback(), 2000);
-                }
             } else {
                 console.error("API error:", data.error);
-                // Re-add input as a temporary message to inform user of error
-                setMessages(prev => [...prev, { sender: "interviewer", text: `Error processing response: ${data.error}`, type: "question" }]);
+                returnUnsent(userMessage, `Error processing response: ${data.error}`);
             }
         } catch (error) {
             console.error("Submission error:", error);
-            setMessages(prev => [...prev, { sender: "interviewer", text: `Network error. Please try again.`, type: "question" }]);
+            returnUnsent(userMessage, "Network error. Please try again.");
         } finally {
             setIsProcessing(false);
         }
     };
 
-    const buildTranscript = (msgs: ChatMessage[]) => {
-        const qa: { question: string; answer: string }[] = [];
-        let currentQ = "";
-        for (const msg of msgs) {
-            if (msg.sender === "interviewer" && msg.type === "question") {
-                currentQ = msg.text;
-            } else if (msg.sender === "user" && currentQ) {
-                qa.push({ question: currentQ, answer: msg.text });
-                currentQ = "";
-            }
+    const saveInterview = async (fb: Feedback) => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/interview/save`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                    role:          state?.role        || "",
+                    company:       state?.company     || "",
+                    interviewType: state?.interviewType || "",
+                    level:         state?.level       || "",
+                    duration:      state?.duration    || "",
+                    jdId:          state?.jdId,
+                    resumeId:      state?.resumeId,
+                    transcript:    buildTranscript(messages),
+                    feedback:      fb,
+                }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        } catch (err) {
+            console.error("Failed to save interview session:", err);
+            toast.error("The interview could not be saved to Reviews.");
         }
-        return qa;
     };
 
     const getFeedback = async () => {
-        if (!sessionId || interviewState !== "completed" || isProcessing) return;
+        if (!sessionId || interviewState !== "completed" || feedbackInFlightRef.current) return;
+        feedbackInFlightRef.current = true;
         setIsProcessing(true);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/get_feedback/${sessionId}`, { method: "GET" });
+            const response = await fetch(`${API_BASE_URL}/get_feedback/${sessionId}`, {
+                method: "GET",
+                headers: await serviceAuthHeaders(),
+            });
             const data = await response.json();
 
             if (response.ok) {
-                const fb = data.feedback;
+                // Give late voice results a moment, but never hold the feedback for a slow service.
+                await Promise.race([
+                    Promise.allSettled(pendingEmotionsRef.current),
+                    new Promise(resolve => setTimeout(resolve, EMOTION_WAIT_MS)),
+                ]);
+                const fb: Feedback = { ...data.feedback, emotion_analysis: summarizeEmotions(emotionsRef.current) };
                 setFeedback(fb);
-                setMessages(prev => [...prev, {
-                    sender: "interviewer",
-                    text: "Your feedback is ready — click the View Feedback button below.",
-                    type: "question"
-                }]);
-
-                // Save session to backend
-                const BACKEND = import.meta.env.VITE_API_BASE_URL;
-                fetch(`${BACKEND}/interview/save`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({
-                        role:          state?.role        || "",
-                        company:       state?.company     || "",
-                        interviewType: state?.interviewType || "",
-                        level:         state?.level       || "",
-                        duration:      state?.duration    || "",
-                        transcript:    buildTranscript(messages),
-                        feedback:      fb,
-                    }),
-                }).catch(err => console.error("Failed to save interview session:", err));
+                addStatus("Your feedback is ready. Click the View Feedback button below.");
+                await saveInterview(fb);
             } else {
-                setMessages(prev => [...prev, { sender: "interviewer", text: `Failed to fetch feedback: ${data.error}`, type: "question" }]);
+                addStatus(`Failed to fetch feedback: ${data.error}`);
             }
         } catch (error) {
             console.error("Feedback error:", error);
-            setMessages(prev => [...prev, { sender: "interviewer", text: `Network error fetching feedback.`, type: "question" }]);
+            addStatus("Network error fetching feedback.");
         } finally {
+            feedbackInFlightRef.current = false;
             setIsProcessing(false);
         }
     };
+
+    // Fetch the feedback once the closing message has been shown. The button stays as a retry.
+    const getFeedbackRef = useRef(getFeedback);
+    useEffect(() => { getFeedbackRef.current = getFeedback; });
+    useEffect(() => {
+        if (interviewState !== "completed") return;
+        const timer = setTimeout(() => getFeedbackRef.current(), 2000);
+        return () => clearTimeout(timer);
+    }, [interviewState]);
 
     // --- Media Control Handlers ---
 
@@ -663,12 +650,12 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
             streamRef.current = s;
             if (videoRef.current) {
                 videoRef.current.srcObject = s;
-                videoRef.current.play();
+                videoRef.current.play().catch(e => console.warn("Camera preview did not play:", e));
             }
             setHasMedia(true);
             setPermissionError(null);
-        } catch (err: any) {
-            setPermissionError(err?.message || "Permission denied");
+        } catch (err) {
+            setPermissionError(errorMessage(err, "Permission denied"));
         }
     };
 
@@ -691,14 +678,12 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
             audioRef.current = null;
         }
         setHasMedia(false);
-        // In a real app, this would navigate to the dashboard
         navigate("/dashboard");
     };
 
     // --- JSX Rendering ---
     const isStartable = interviewState === "initial" && !sessionId && !isProcessing;
     const isReadyForInput = (interviewState === "waiting_intro" || interviewState === "in_interview") && sessionId;
-    const isWaitingForTranscription = !isRecording && audioChunks.length > 0 && isProcessing;
 
     return (
         <div className="w-screen h-screen bg-white text-black flex overflow-hidden font-sans">
@@ -764,7 +749,7 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
 
                     {/* LIVE Status */}
                     {sessionId && (
-                        <div className="absolute top-4 left-4 bg-black text-white rounded-full px-3 py-1 text-sm z-10 flex items-center gap-2">
+                        <div className="absolute top-4 left-4 bg-black text-white rounded-full px-3 py-1 text-sm z-30 flex items-center gap-2">
                             <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
                             {interviewState === "completed" ? "ENDED" : `LIVE ${formatTime(liveTime)}`}
                         </div>
@@ -792,7 +777,7 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
                         onClick={isRecording ? stopRecording : startRecording}
                         disabled={!hasMedia || !audioEnabled || isProcessing || !isReadyForInput}
                         className={`p-4 rounded-full transition-all shadow-lg ring-4 
-                            ${!isRecording
+                            ${!isRecording
                                 ? 'bg-red-600 text-white ring-red-300  hover:bg-red-700'
                                 : 'bg-black text-white ring-black/10 animate-pulse hover:bg-gray-800'
                             }`}
@@ -856,12 +841,14 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
                     <div className="flex flex-col px-4 py-2 mx-4 mt-4 rounded-xl text-[.8rem] text-center overflow-hidden bg-[#e2e2e5] text-neutral-700">
                         <span className="font-semibold">Current State:</span> {interviewState.replace('_', ' ').toUpperCase()}
                         <span className="mt-1 text-[.75rem]">
-                            {isRecording ? "🎤 Recording voice. Click MicOff to stop." : isWaitingForTranscription ? "⏳ Transcribing audio..." : "Text messages are analyzed in real time."}
+                            {isRecording ? "🎤 Recording voice. Click MicOff to stop." : isTranscribing ? "⏳ Transcribing audio..." : "Text messages are analyzed in real time."}
                         </span>
                     </div>
 
                     {/* Message Display Area */}
-                    <div className="flex-1 overflow-y-auto space-y-3 p-6 pr-3 flex flex-col justify-end">
+                    <div className="flex-1 min-h-0 overflow-y-auto">
+                        {/* min-h-full keeps a short chat at the bottom and lets a long one scroll */}
+                        <div className="min-h-full space-y-3 p-6 pr-3 flex flex-col justify-end">
                         {messages.length === 0 && (
                             <div className="text-neutral-400 text-sm text-center italic">
                                 Click 'Start AI Interview' to begin.
@@ -876,7 +863,9 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
                                     }`}
                             >
                                 <span className="font-semibold text-xs opacity-70 block mb-1">
-                                    {m.sender === "user" ? "You" : "Interviewer"} ({m.type.toUpperCase()})
+                                    {m.type === "status"
+                                        ? "InterviewMate"
+                                        : `${m.sender === "user" ? "You" : "Interviewer"} (${m.type.toUpperCase()})`}
                                 </span>
                                 {m.text}
                             </div>
@@ -890,6 +879,7 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
                             </div>
                         )}
                         <div ref={chatEndRef} />
+                        </div>
                     </div>
 
                     {/* Input Area */}
@@ -900,13 +890,13 @@ export default function WebinarUI({ simulation: _simulation }: { simulation?: Si
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 className="flex-1 p-3 border border-neutral-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow"
-                                placeholder={isReadyForInput ? "Type your answer or record your voice..." : "Click 'Start AI Interview' to begin"}
+                                placeholder={isReadyForInput ? "Type or record your answer" : interviewState === "completed" ? "The interview has ended" : "Click 'Start AI Interview' to begin"}
                                 disabled={!isReadyForInput || isProcessing || isRecording}
                             />
                             <button
                                 type="submit"
                                 className={`p-3 rounded-full w-10 h-10 transition-colors flex items-center justify-center 
-                                    ${(input.trim() && isReadyForInput && !isProcessing && !isRecording) ? 'bg-gray-600 hover:bg-gray-700 text-white' : 'bg-neutral-300 text-neutral-500 cursor-not-allowed'}`}
+                                    ${(input.trim() && isReadyForInput && !isProcessing && !isRecording) ? 'bg-gray-600 hover:bg-gray-700 text-white' : 'bg-neutral-300 text-neutral-500 cursor-not-allowed'}`}
                                 disabled={!input.trim() || !isReadyForInput || isProcessing || isRecording}
                             >
                                 {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}

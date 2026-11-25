@@ -22,7 +22,7 @@ const Index = () => {
                     <Card className="border-2 bg-linear-to-br from-card to-secondary">
                         <CardContent className="p-8 md:p-12">
                             <h2 className="text-3xl font-bold mb-8 text-center">
-                                Why Choose CareerCompass AI?
+                                Why Choose InterviewMate?
                             </h2>
                             <div className="grid md:grid-cols-2 gap-6">
                                 {benefits.map((benefit, index) => (
@@ -51,7 +51,7 @@ const Index = () => {
                     {/* Brand Summary */}
                     <div>
                         <h3 className="text-xl font-semibold mb-4 text-white leading-tight">
-                            InterviewMate AI
+                            InterviewMate
                         </h3>
                         <p className="text-sm text-gray-400">
                             Your intelligent career assistant for mastering resumes, interviews,
@@ -110,7 +110,7 @@ const Index = () => {
 
                 {/* Bottom Section */}
                 <div className="text-center text-gray-100 text-sm py-6 bg-[#151515] border-t border-gray-700">
-                    © 2025 InterviewMate AI — Empowering careers through intelligent preparation.
+                    © 2025 InterviewMate. Empowering careers through intelligent preparation.
                 </div>
             </footer>
 

@@ -91,7 +91,6 @@ const ResumeBuilder: React.FC = () => {
 
     const deleteResume = async (id: string) => {
         const isMongoId = /^[0-9a-fA-F]{24}$/.test(id);
-        if (!confirm("Are you sure you want to delete this resume?")) return;
 
         try {
             if (isMongoId) {
@@ -107,9 +106,9 @@ const ResumeBuilder: React.FC = () => {
 
             // If the deleted one was selected, pick another
             setSelectedId((prevSelected) =>
-                prevSelected === id && resumes.length > 1
+                prevSelected === id
                     ? resumes.find((r) => r._id !== id)?._id ?? null
-                    : null
+                    : prevSelected
             );
 
             toast.success("Resume deleted successfully!");
@@ -118,22 +117,19 @@ const ResumeBuilder: React.FC = () => {
             toast.error("Error deleting resume");
         }
     };
+    // The upload already saved it, so keep the id the server gave it.
     const handleImport = (parsedResume: Resume) => {
-        const storedUser = localStorage.getItem("user");
-        const user = storedUser ? JSON.parse(storedUser) : null;
-        const userId = user?._id || "";
-
-        const importedResume = { ...parsedResume, _id: uuidv4(), userId };
-        setResumes((prev) => [...prev, importedResume]);
-        setSelectedId(importedResume._id);
+        setResumes((prev) => [...prev, parsedResume]);
+        setSelectedId(parsedResume._id ?? null);
     };
 
     const handleUpdate = (id: string, updatedResume: Resume) => {
         setResumes((prev) => prev.map((r) => (r._id === id ? updatedResume : r)));
     };
 
-    const handleCreate = (newResume: Resume) => {
-        setResumes((prev) => [...prev, newResume]);
+    // Swap the unsaved draft for the saved resume.
+    const handleCreate = (draftId: string, newResume: Resume) => {
+        setResumes((prev) => prev.map((r) => (r._id === draftId ? newResume : r)));
         setSelectedId(newResume._id ?? null);
     };
 

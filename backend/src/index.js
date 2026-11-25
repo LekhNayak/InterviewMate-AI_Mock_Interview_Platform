@@ -51,6 +51,19 @@ app.get("/health", (req, res) => {
     });
 });
 
+// Errors raised before a handler runs (bad upload, invalid JSON) answer as JSON.
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const status = err.name === "MulterError" ? 400 : err.status || err.statusCode || 500;
+    if (status >= 500) console.error("Unhandled error:", err);
+    const message = status >= 500 ? "Internal Server Error" : err.message;
+    res.status(status).json({ success: false, message, error: message });
+});
+
+if (!process.env.SERVICE_TOKEN_SECRET) {
+    console.log("⚠️  SERVICE_TOKEN_SECRET is not set: the interview and emotion services accept requests without a login".yellow);
+}
+
 // Start server first so non-DB routes stay available even if Mongo is down
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`.magenta);

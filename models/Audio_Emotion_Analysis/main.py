@@ -19,6 +19,15 @@ from melspec import plot_colored_polar, get_melspec, CAT6, CAT7, CAT3, COLOR_DIC
 from pydub import AudioSegment
 import imageio_ffmpeg
 import subprocess as _sp
+import tempfile
+from contextlib import contextmanager
+from service_auth import install_auth
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass  # only needed to read SERVICE_TOKEN_SECRET from a local .env
 
 # Point pydub at the bundled ffmpeg binary so no system install is needed
 _FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -29,6 +38,7 @@ AudioSegment.ffprobe = _FFMPEG.replace("ffmpeg", "ffprobe") if "ffmpeg" in _FFMP
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+install_auth(app, public_paths=("/api/health",))
 
 # Load models
 MODEL_6_EMOTIONS = load_model("model3.h5")
@@ -45,36 +55,25 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def save_audio_file(file) -> str:
-    """Save uploaded audio file and return path"""
-    if not os.path.exists("audio"):
-        os.makedirs("audio")
+@contextmanager
+def uploaded_wav(file):
+    """Save an upload to its own temporary folder, yield it as a WAV path, then delete it.
 
-    # Clear old files
-    for filename in os.listdir("audio"):
-        file_path = os.path.join("audio", filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-        except Exception as e:
-            print(f'Failed to delete {file_path}. Reason: {e}')
-
-    # Save new file
-    filename = secure_filename(file.filename)
-    file_path = os.path.join("audio", filename)
+    A private folder per request keeps simultaneous requests from touching each other's files.
+    """
     content = file.read()
-
-    # Check file size
     if len(content) > MAX_FILE_SIZE:
-        abort(400, description="File size is too large. Maximum size is 4MB.")
+        abort(400, description="File size is too large. Maximum size is 9MB.")
 
-    # Reset file pointer
-    file.seek(0)
-
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    return file_path
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, secure_filename(file.filename) or "upload.wav")
+        with open(path, "wb") as f:
+            f.write(content)
+        try:
+            wav_path = convert_to_wav(path)
+        except Exception as e:
+            abort(400, description=f"Error loading audio file: {str(e)}")
+        yield wav_path
 
 
 def get_mfccs(audio_path: str, limit: int):
@@ -188,7 +187,7 @@ def convert_to_wav(path):
     if path.lower().endswith(".wav"):
         return path
 
-    wav_path = path.rsplit(".", 1)[0] + ".wav"
+    wav_path = os.path.splitext(path)[0] + ".wav"
     try:
         result = _sp.run(
             [_FFMPEG, "-y", "-i", path, wav_path],
@@ -200,13 +199,21 @@ def convert_to_wav(path):
     except Exception as e:
         raise Exception(f"FFmpeg conversion failed: {str(e)}")
 
+def load_wav(path):
+    """Load audio at 44.1 kHz, answering 400 instead of 500 when it cannot be read."""
+    try:
+        return librosa.load(path, sr=44100)
+    except Exception as e:
+        abort(400, description=f"Error loading audio file: {str(e)}")
+
+
 @app.route("/api/predict", methods=["POST"])
 def predict_emotion():
     """
     Main prediction endpoint
 
     Parameters (form data):
-    - file: Audio file (wav, mp3, ogg) - required
+    - file: Audio file (wav, mp3, ogg, webm) - required
     - model_type: "mfccs" or "mel-specs" (default: "mfccs")
     - emotions_3: true/false (default: true) - Predict 3 emotions
     - emotions_6: true/false (default: true) - Predict 6 emotions
@@ -225,7 +232,7 @@ def predict_emotion():
 
         # Validate file type
         if not allowed_file(file.filename):
-            abort(400, description="Invalid file type. ")
+            abort(400, description="Invalid file type. Supported: wav, mp3, ogg, webm")
 
         # Get parameters
         model_type = request.form.get('model_type', 'mfccs')
@@ -233,84 +240,77 @@ def predict_emotion():
         emotions_6 = str_to_bool(request.form.get('emotions_6', 'true'))
         emotions_7 = str_to_bool(request.form.get('emotions_7', 'false'))
         gender = str_to_bool(request.form.get('gender', 'false'))
-        audio_path = save_audio_file(file)
-        # Save audio file
-        try:
-    # Convert unsupported formats like webm → wav
-            audio_path = convert_to_wav(audio_path)
-            wav, sr = librosa.load(audio_path, sr=44100)
-        except Exception as e:
-            abort(400, description=f"Error loading audio file: {str(e)}")
-
-
         results = {}
 
-        # ---------- NEW: compute confidence / anxiety style ----------
-        confidence_features = compute_confidence_features(wav, sr)
-        style_score = simple_confidence_score(confidence_features)
-        style_label = "confident" if style_score >= 0.5 else "anxious"
-        # ------------------------------------------------------------
+        with uploaded_wav(file) as audio_path:
+            wav, sr = load_wav(audio_path)
 
-        if model_type == "mfccs":
-            # Get MFCC features
-            mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
-            mfccs = mfccs.reshape(1, *mfccs.shape)
-            pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
+            # ---------- NEW: compute confidence / anxiety style ----------
+            confidence_features = compute_confidence_features(wav, sr)
+            style_score = simple_confidence_score(confidence_features)
+            style_label = "confident" if style_score >= 0.5 else "anxious"
+            # ------------------------------------------------------------
 
-            # 3 emotions prediction
-            if emotions_3:
-                pos = pred[3] + pred[5] * .5
-                neu = pred[2] + pred[5] * .5 + pred[4] * .5
-                neg = pred[0] + pred[1] + pred[4] * .5
-                data3 = np.array([pos, neu, neg])
-                emotion_3 = CAT3[data3.argmax()]
-                results["emotions_3"] = {
-                    "emotion": emotion_3,
-                    "confidence": float(data3.max()),
-                    "predictions": {
-                        CAT3[i]: float(data3[i]) for i in range(len(CAT3))
+            if model_type == "mfccs":
+                # Get MFCC features
+                mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
+                mfccs = mfccs.reshape(1, *mfccs.shape)
+                pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
+
+                # 3 emotions prediction
+                if emotions_3:
+                    pos = pred[3] + pred[5] * .5
+                    neu = pred[2] + pred[5] * .5 + pred[4] * .5
+                    neg = pred[0] + pred[1] + pred[4] * .5
+                    data3 = np.array([pos, neu, neg])
+                    emotion_3 = CAT3[data3.argmax()]
+                    results["emotions_3"] = {
+                        "emotion": emotion_3,
+                        "confidence": float(data3.max()),
+                        "predictions": {
+                            CAT3[i]: float(data3[i]) for i in range(len(CAT3))
+                        }
                     }
-                }
 
-            # 6 emotions prediction
-            if emotions_6:
-                emotion_6 = CAT6[pred.argmax()]
-                results["emotions_6"] = {
-                    "emotion": emotion_6,
-                    "confidence": float(pred.max()),
-                    "predictions": {
-                        CAT6[i]: float(pred[i]) for i in range(len(CAT6))
+                # 6 emotions prediction
+                if emotions_6:
+                    emotion_6 = CAT6[pred.argmax()]
+                    results["emotions_6"] = {
+                        "emotion": emotion_6,
+                        "confidence": float(pred.max()),
+                        "predictions": {
+                            CAT6[i]: float(pred[i]) for i in range(len(CAT6))
+                        }
                     }
-                }
 
-            # 7 emotions prediction
-            if emotions_7:
-                mfccs_7 = get_mfccs(audio_path, MODEL_7_EMOTIONS.input_shape[-2])
-                mfccs_7 = mfccs_7.T.reshape(1, *mfccs_7.T.shape)
-                pred_7 = MODEL_7_EMOTIONS.predict(mfccs_7, verbose=0)[0]
-                emotion_7 = CAT7[pred_7.argmax()]
-                results["emotions_7"] = {
-                    "emotion": emotion_7,
-                    "confidence": float(pred_7.max()),
-                    "predictions": {
-                        CAT7[i]: float(pred_7[i]) for i in range(len(CAT7))
+                # 7 emotions prediction
+                if emotions_7:
+                    mfccs_7 = get_mfccs(audio_path, MODEL_7_EMOTIONS.input_shape[-2])
+                    mfccs_7 = mfccs_7.T.reshape(1, *mfccs_7.T.shape)
+                    pred_7 = MODEL_7_EMOTIONS.predict(mfccs_7, verbose=0)[0]
+                    emotion_7 = CAT7[pred_7.argmax()]
+                    results["emotions_7"] = {
+                        "emotion": emotion_7,
+                        "confidence": float(pred_7.max()),
+                        "predictions": {
+                            CAT7[i]: float(pred_7[i]) for i in range(len(CAT7))
+                        }
                     }
-                }
 
-            # Gender prediction
-            if gender:
-                gmfccs = get_mfccs(audio_path, MODEL_GENDER.input_shape[-1])
-                gmfccs = gmfccs.reshape(1, *gmfccs.shape)
-                gpred = MODEL_GENDER.predict(gmfccs, verbose=0)[0]
-                gender_result = "female" if gpred.argmax() == 0 else "male"
-                results["gender"] = {
-                    "gender": gender_result,
-                    "confidence": float(gpred.max()),
-                    "predictions": {
-                        "female": float(gpred[0]),
-                        "male": float(gpred[1])
+                # Gender prediction
+                if gender:
+                    gmfccs = get_mfccs(audio_path, MODEL_GENDER.input_shape[-1])
+                    gmfccs = gmfccs.reshape(1, *gmfccs.shape)
+                    gpred = MODEL_GENDER.predict(gmfccs, verbose=0)[0]
+                    gender_result = "female" if gpred.argmax() == 0 else "male"
+                    results["gender"] = {
+                        "gender": gender_result,
+                        "confidence": float(gpred.max()),
+                        "predictions": {
+                            "female": float(gpred[0]),
+                            "male": float(gpred[1])
+                        }
                     }
-                }
 
         # ---------- NEW: attach speaking style to results ----------
         results["speaking_style"] = {
@@ -365,59 +365,53 @@ def predict_emotions_only():
 
     try:
         if not allowed_file(file.filename):
-            abort(400, description="Invalid file type. Supported: wav, mp3, ogg")
-
-        audio_path = save_audio_file(file)
-        try:
-    # Convert unsupported formats like webm → wav
-            audio_path = convert_to_wav(audio_path)
-
-            wav, sr = librosa.load(audio_path, sr=44100)
-        except Exception as e:
-            abort(400, description=f"Error loading audio file: {str(e)}")
+            abort(400, description="Invalid file type. Supported: wav, mp3, ogg, webm")
 
         results = {}
 
-        if emotions_6:
-            mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
-            mfccs = mfccs.reshape(1, *mfccs.shape)
-            pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
-            emotion_6 = CAT6[pred.argmax()]
-            results["emotions_6"] = {
-                "emotion": emotion_6,
-                "confidence": float(pred.max()),
-                "predictions": {
-                    CAT6[i]: float(pred[i]) for i in range(len(CAT6))
+        with uploaded_wav(file) as audio_path:
+            load_wav(audio_path)  # reject unreadable audio with a 400
+
+            if emotions_6:
+                mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
+                mfccs = mfccs.reshape(1, *mfccs.shape)
+                pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
+                emotion_6 = CAT6[pred.argmax()]
+                results["emotions_6"] = {
+                    "emotion": emotion_6,
+                    "confidence": float(pred.max()),
+                    "predictions": {
+                        CAT6[i]: float(pred[i]) for i in range(len(CAT6))
+                    }
                 }
-            }
-        elif emotions_7:
-            mfccs_7 = get_mfccs(audio_path, MODEL_7_EMOTIONS.input_shape[-2])
-            mfccs_7 = mfccs_7.T.reshape(1, *mfccs_7.T.shape)
-            pred_7 = MODEL_7_EMOTIONS.predict(mfccs_7, verbose=0)[0]
-            emotion_7 = CAT7[pred_7.argmax()]
-            results["emotions_7"] = {
-                "emotion": emotion_7,
-                "confidence": float(pred_7.max()),
-                "predictions": {
-                    CAT7[i]: float(pred_7[i]) for i in range(len(CAT7))
+            elif emotions_7:
+                mfccs_7 = get_mfccs(audio_path, MODEL_7_EMOTIONS.input_shape[-2])
+                mfccs_7 = mfccs_7.T.reshape(1, *mfccs_7.T.shape)
+                pred_7 = MODEL_7_EMOTIONS.predict(mfccs_7, verbose=0)[0]
+                emotion_7 = CAT7[pred_7.argmax()]
+                results["emotions_7"] = {
+                    "emotion": emotion_7,
+                    "confidence": float(pred_7.max()),
+                    "predictions": {
+                        CAT7[i]: float(pred_7[i]) for i in range(len(CAT7))
+                    }
                 }
-            }
-        else:  # 3 emotions
-            mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
-            mfccs = mfccs.reshape(1, *mfccs.shape)
-            pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
-            pos = pred[3] + pred[5] * .5
-            neu = pred[2] + pred[5] * .5 + pred[4] * .5
-            neg = pred[0] + pred[1] + pred[4] * .5
-            data3 = np.array([pos, neu, neg])
-            emotion_3 = CAT3[data3.argmax()]
-            results["emotions_3"] = {
-                "emotion": emotion_3,
-                "confidence": float(data3.max()),
-                "predictions": {
-                    CAT3[i]: float(data3[i]) for i in range(len(CAT3))
+            else:  # 3 emotions
+                mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
+                mfccs = mfccs.reshape(1, *mfccs.shape)
+                pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
+                pos = pred[3] + pred[5] * .5
+                neu = pred[2] + pred[5] * .5 + pred[4] * .5
+                neg = pred[0] + pred[1] + pred[4] * .5
+                data3 = np.array([pos, neu, neg])
+                emotion_3 = CAT3[data3.argmax()]
+                results["emotions_3"] = {
+                    "emotion": emotion_3,
+                    "confidence": float(data3.max()),
+                    "predictions": {
+                        CAT3[i]: float(data3[i]) for i in range(len(CAT3))
+                    }
                 }
-            }
 
         return jsonify({
             "success": True,
@@ -449,13 +443,12 @@ def predict_gender_only():
 
     try:
         if not allowed_file(file.filename):
-            abort(400, description="Invalid file type. Supported: wav, mp3, ogg")
-
-        audio_path = save_audio_file(file)
-        wav, sr = librosa.load(audio_path, sr=44100)
+            abort(400, description="Invalid file type. Supported: wav, mp3, ogg, webm")
 
         # Gender prediction
-        gmfccs = get_mfccs(audio_path, MODEL_GENDER.input_shape[-1])
+        with uploaded_wav(file) as audio_path:
+            load_wav(audio_path)
+            gmfccs = get_mfccs(audio_path, MODEL_GENDER.input_shape[-1])
         gmfccs = gmfccs.reshape(1, *gmfccs.shape)
         gpred = MODEL_GENDER.predict(gmfccs, verbose=0)[0]
         gender_result = "female" if gpred.argmax() == 0 else "male"
@@ -501,18 +494,17 @@ def analyze_audio_features():
 
     try:
         if not allowed_file(file.filename):
-            abort(400, description="Invalid file type. Supported: wav, mp3, ogg")
+            abort(400, description="Invalid file type. Supported: wav, mp3, ogg, webm")
 
-        audio_path = save_audio_file(file)
+        with uploaded_wav(file) as audio_path:
+            # Load audio
+            wav, sr = load_wav(audio_path)
 
-        # Load audio
-        wav, sr = librosa.load(audio_path, sr=44100)
+            # Get MFCCs
+            mfccs = librosa.feature.mfcc(y=wav, sr=sr)
 
-        # Get MFCCs
-        mfccs = librosa.feature.mfcc(y=wav, sr=sr)
-
-        # Get mel-spectrogram
-        Xdb = get_melspec(audio_path)[1]
+            # Get mel-spectrogram
+            Xdb = get_melspec(audio_path)[1]
 
         return jsonify({
             "success": True,
@@ -554,30 +546,30 @@ def visualize_polar_plot():
             abort(400, description="num_emotions must be 3, 6, or 7")
 
         if not allowed_file(file.filename):
-            abort(400, description="Invalid file type. Supported: wav, mp3, ogg")
-
-        audio_path = save_audio_file(file)
+            abort(400, description="Invalid file type. Supported: wav, mp3, ogg, webm")
 
         # Get predictions
-        if num_emotions == 6:
-            mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
-            mfccs = mfccs.reshape(1, *mfccs.shape)
-            pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
-            categories = CAT6
-        elif num_emotions == 7:
-            mfccs = get_mfccs(audio_path, MODEL_7_EMOTIONS.input_shape[-2])
-            mfccs = mfccs.T.reshape(1, *mfccs.T.shape)
-            pred = MODEL_7_EMOTIONS.predict(mfccs, verbose=0)[0]
-            categories = CAT7
-        else:  # 3 emotions
-            mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
-            mfccs = mfccs.reshape(1, *mfccs.shape)
-            pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
-            pos = pred[3] + pred[5] * .5
-            neu = pred[2] + pred[5] * .5 + pred[4] * .5
-            neg = pred[0] + pred[1] + pred[4] * .5
-            pred = np.array([pos, neu, neg])
-            categories = CAT3
+        with uploaded_wav(file) as audio_path:
+            load_wav(audio_path)
+            if num_emotions == 6:
+                mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
+                mfccs = mfccs.reshape(1, *mfccs.shape)
+                pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
+                categories = CAT6
+            elif num_emotions == 7:
+                mfccs = get_mfccs(audio_path, MODEL_7_EMOTIONS.input_shape[-2])
+                mfccs = mfccs.T.reshape(1, *mfccs.T.shape)
+                pred = MODEL_7_EMOTIONS.predict(mfccs, verbose=0)[0]
+                categories = CAT7
+            else:  # 3 emotions
+                mfccs = get_mfccs(audio_path, MODEL_6_EMOTIONS.input_shape[-1])
+                mfccs = mfccs.reshape(1, *mfccs.shape)
+                pred = MODEL_6_EMOTIONS.predict(mfccs, verbose=0)[0]
+                pos = pred[3] + pred[5] * .5
+                neu = pred[2] + pred[5] * .5 + pred[4] * .5
+                neg = pred[0] + pred[1] + pred[4] * .5
+                pred = np.array([pos, neu, neg])
+                categories = CAT3
 
         # Create plot
         fig = plt.figure(figsize=(5, 5))

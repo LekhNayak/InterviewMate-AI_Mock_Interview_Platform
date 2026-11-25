@@ -2,6 +2,11 @@ const express = require("express");
 const router = express.Router();
 const axios = require("axios");
 const { userAuth } = require("../middleware/auth.middleware");
+const { escapeRegex } = require("../utils/escapeRegex");
+
+// Match whole words, so "go" does not match "google" and "c" does not match "c++".
+const mentions = (text, skill) =>
+    new RegExp(`(^|[^a-z0-9+#.])${escapeRegex(skill)}($|[^a-z0-9+#])`).test(text);
 
 // 🔥 JOB SEARCH ROUTE
 router.post("/search", userAuth, async (req, res) => {
@@ -46,7 +51,7 @@ router.post("/search", userAuth, async (req, res) => {
             const matchedSkills = [];
 
             skills.forEach((skill) => {
-                if (desc.includes(skill.toLowerCase())) {
+                if (mentions(desc, skill.toLowerCase())) {
                     score++;
                     matchedSkills.push(skill);
                 }
@@ -57,7 +62,6 @@ router.post("/search", userAuth, async (req, res) => {
                 company: job.company?.name || "Unknown",
                 location: job.location || "Remote",
                 description: job.description,
-                url: job.url,
                 url: job.url,
                 matchScore: skills.length
                     ? Math.round((score / skills.length) * 100)
@@ -75,7 +79,9 @@ router.post("/search", userAuth, async (req, res) => {
               )
             : processed;
 
-        res.json({ success: true, jobs: filtered });
+        // `fetched` counts jobs before the location filter, so the client can tell
+        // "no matches in this batch" from "no more batches".
+        res.json({ success: true, jobs: filtered, fetched: jobs.length });
 
     } catch (err) {
         console.error(err.response?.data || err.message);

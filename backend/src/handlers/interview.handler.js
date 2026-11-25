@@ -1,4 +1,10 @@
+const fs = require('fs');
+const mongoose = require('mongoose');
 const Interview = require('../models/interview.model');
+const JobDescription = require('../models/jd.model');
+const ParsedResume = require('../models/parser.model');
+const { canReadJd } = require('../utils/jdText');
+const { escapeRegex } = require('../utils/escapeRegex');
 const cloudinary = require('cloudinary').v2;
 
 cloudinary.config({
@@ -70,6 +76,8 @@ const startInterview = async (req, res) => {
             success: false,
             error: error.message,
         });
+    } finally {
+        if (req.file?.path) fs.unlink(req.file.path, () => {});
     }
 };
 
@@ -138,7 +146,7 @@ const getByType = async (req, res) => {
         const { type } = req.params;
         const interviews = await Interview.find({
             userId: req.user._id,
-            type: { $regex: new RegExp(type, 'i') }, // case-insensitive
+            type: { $regex: escapeRegex(type), $options: 'i' }, // case-insensitive
         })
             .populate('jdId', 'title company')
             .populate('resumeId', 'title pdfUrl')
@@ -163,9 +171,21 @@ const _TYPE_MAP = {
     hybrid:             'Hybrid',
 };
 
+// Keep a reference only if it exists and this user may see it.
+const ownResumeId = async (id, user) => {
+    if (!mongoose.isValidObjectId(id)) return undefined;
+    return (await ParsedResume.exists({ _id: id, userId: user._id })) ? id : undefined;
+};
+
+const readableJdId = async (id, user) => {
+    if (!mongoose.isValidObjectId(id)) return undefined;
+    const job = await JobDescription.findById(id);
+    return job && canReadJd(job, user) ? id : undefined;
+};
+
 const saveSession = async (req, res) => {
     try {
-        const { role, company, interviewType, level, duration, transcript, feedback } = req.body;
+        const { role, company, interviewType, level, duration, transcript, feedback, jdId, resumeId } = req.body;
         const type = _TYPE_MAP[interviewType] || 'Technical';
 
         const record = await Interview.create({
@@ -176,6 +196,8 @@ const saveSession = async (req, res) => {
             company:  company  || '',
             level:    level    || '',
             duration: duration || '',
+            jdId: await readableJdId(jdId, req.user),
+            resumeId: await ownResumeId(resumeId, req.user),
             transcript: Array.isArray(transcript) ? transcript : [],
             feedback:   feedback || {},
         });
