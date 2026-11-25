@@ -115,3 +115,14 @@ __pycache__/
 
 # brag launch-video output
 brag-output/
+
+# Files the services write while running (uploads, sessions, audio)
+backend/tempUploads/
+models/Interview api_service/data/
+models/Interview api_service/static/recordings/*
+!models/Interview api_service/static/recordings/.gitkeep
+models/Audio_Emotion_Analysis/audio/
+
+INTERVIEW_PREP.md
+models/Resume ATS and JD/api_service/placed_resume/
+models/Resume ATS and JD/api_service/resume_db/
