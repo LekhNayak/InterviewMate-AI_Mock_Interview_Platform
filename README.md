@@ -1,372 +1,221 @@
-# InterViewMate 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/banner-dark.png">
+    <img src="docs/screenshots/banner-light.png" alt="InterviewMate banner: mock interviews with an AI interviewer, next to the interview page with a camera view and chat" width="100%">
+  </picture>
+</p>
 
-> AI-powered interview preparation and resume analysis platform. Full-stack app with a React frontend, Node.js/Express backend, and three Python ML microservices.
+# InterviewMate
 
----
+InterviewMate runs a mock interview with an AI interviewer that asks from your resume and a job description, then scores your answers.
 
-## What It Does
+[Live app](https://interviewmate.lekh.online) · [Screenshots](#screenshots) · [Features](#features) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Quick start](#quick-start) · [Documentation](#documentation) · [Honest limits](#honest-limits)
 
-| Feature | Description |
+<!--
+  Demo video goes here.
+  GitHub does not play an .mp4 that is stored in the repository.
+  Edit this file on github.com, drag the compressed video into the editor at this spot,
+  and replace this comment with the https://github.com/user-attachments/assets/... link it inserts.
+  Keep that link on its own line.
+-->
+
+## Screenshots
+
+**The interview.** The camera view is your own. The interviewer writes in the chat and can speak.
+
+<p><img src="docs/screenshots/interview.png" alt="Interview page: the candidate's camera view on the left, and a chat on the right where the interviewer asks about a shuttle tracker project and the candidate answers" width="100%"></p>
+
+**The review.** A rating, four scores, strengths, gaps and next steps, saved with the transcript.
+
+<p><img src="docs/screenshots/reviews.png" alt="Reviews page: a Backend Engineer interview rated 8 out of 10, with bars for technical accuracy, communication, depth and problem solving, then strengths, areas to improve and next steps" width="100%"></p>
+
+| Set up an interview | Check a resume against a job |
 |---|---|
-| Interview Simulation | Live mock interviews; Groq LLM (qwen/qwen3.6-27b) generates contextual questions |
-| Resume Builder | Upload PDF → Groq extracts structured data; edit/save via UI |
-| ATS Scoring | Match a resume against a job description; ChromaDB finds similar resumes via embeddings |
-| Emotion Recognition | Analyze speech patterns, emotion, and gender from audio (TensorFlow models) |
-| Job Finder | Search LinkedIn jobs via RapidAPI; location filter + infinite pagination (8/page, appends new batches) |
-| Skill Boost Hub | Multi-page resource carousel for Tech (LeetCode, boot.dev, etc.) and Communication (Elsa, Toastmasters) |
-| Progress Tracking | LeetCode, Codeforces, and interview history dashboard |
-| User Auth | JWT (cookies) + OTP email verification; profile with skills, social links |
+| <img src="docs/screenshots/simulation-setup.png" alt="Simulation Settings dialog with role, interview type, difficulty, duration and resume"> | <img src="docs/screenshots/ats-checker.png" alt="ATS Checker with a score of 75, a JD match of 78 percent, matched skills, missing keywords and suggestions"> |
 
----
+| Edit a resume | Find jobs |
+|---|---|
+| <img src="docs/screenshots/resume-builder.png" alt="Resume Building tab with a formatted preview, a skills editor and the resume library"> | <img src="docs/screenshots/find-jobs.png" alt="Find Jobs tab with backend jobs in Pune, match percentages and matched skills"> |
+
+These were taken from the app running locally with fictional data and a drawing in place of the camera. Groq, Sarvam, Cloudinary and RapidAPI were replaced by local stand-ins, so the written questions, feedback, report and jobs are samples. The ATS Score and job match percentages were calculated by the real code.
+
+## Features
+
+**Practice**
+
+- Upload a job description and choose an interview type (HR, projects, role, DSA or hybrid), a difficulty, and 3 to 17 questions.
+- Answer by voice or by typing. Recorded answers are transcribed for you to check before you send them.
+- Hear each question read aloud.
+- Get a rating out of 10, four scores and next steps, and read past interviews and transcripts in **Reviews**.
+
+**Prepare a resume**
+
+- Turn a PDF resume into editable fields and download it as LaTeX.
+- Compare a resume with a job description or a role name for an ATS score, missing keywords and suggestions.
+
+**Find work and track progress**
+
+- Search LinkedIn jobs from the past week, sorted by how many of your skills they mention.
+- See an interview calendar, Codeforces and LeetCode progress, and links to practice sites on the dashboard.
 
 ## Architecture
 
-```
-Browser (React + TS, :8080)
-    │
-    ▼
-Express API (Node.js, :5000 or :8000)
-    │
-    ├── MongoDB Atlas (users, resumes, JDs, interviews, ATS results)
-    ├── Cloudinary (resume PDFs, interview records)
-    ├── Groq API (resume parsing, LLM-based analysis)
-    ├── RapidAPI / LinkedIn Scraper (job search)
-    └── Nodemailer (OTP email)
+The browser talks to an Express API for accounts and saved data, and directly to two Python services during an interview. A third Python service scores resumes and is called only by the API.
 
-Python Microservices (Port-specific logic handled via ExpresVs proxy):
-    ├── Interview Service  :5000   Flask — session management, Groq Q-gen, Sarvam TTS, transcription
-    ├── ATS/Resume Service :6050   Flask — PDF parsing, Groq analysis, ChromaDB similarity
-    └── Emotion Analysis   :8090   Flask — TensorFlow MFCC emotion/gender models
-```
+```mermaid
+flowchart LR
+    browser["Browser<br/>React + Vite"]
 
----
+    browser -->|"JWT cookie"| api["Express API"]
+    browser -->|"no login check"| interview["Interview service"]
+    browser -->|"no login check"| emotion["Emotion service"]
 
-## Repository Layout
-
-```
-Efos-Virtual Hack/
-├── README.md                          ← this file
-├── CONTEXT.md                         ← older context doc (may be stale)
-├── frontend/                          React 19 + TypeScript + Vite + TailwindCSS (:8080)
-│   └── src/
-│       ├── pages/                     Page-level components
-│       │   ├── Index.tsx              Landing page
-│       │   ├── Auth.tsx               Signup / Login
-│       │   ├── Dashboard.tsx          Dashboard shell
-│       │   ├── Interview.tsx          Interview simulation (WebRTC + chat)
-│       │   ├── JdOnboarding.tsx       Job description upload
-│       │   ├── ProfileSetupModel.tsx  Profile completion modal
-│       │   ├── Reviews.tsx            Feedback / review page
-│       │   └── NotFound.tsx           404
-│       ├── components/
-│       │   ├── DashboardContent/      Dashboard sub-pages
-│       │   │   ├── DashboardHome.tsx
-│       │   │   ├── Simulations.tsx
-│       │   │   ├── Resume.tsx
-│       │   │   ├── ATSChecker.tsx
-│       │   │   ├── Performance.tsx
-│       │   │   ├── Jobfinder.tsx      Job search (location filter + 8-per-page pagination)
-│       │   │   ├── Settings.tsx
-│       │   │   └── test.tsx
-│       │   ├── Resume/
-│       │   │   ├── ResumeList.tsx     Lists user's own resumes; upload PDF
-│       │   │   ├── ResumePreview.tsx
-│       │   │   └── Resumeeditor.tsx   Tab editor (About, Education, Skills, Projects, Activities)
-│       │   ├── simulations/
-│       │   ├── progress/              LeetCode, Codeforces
-│       │   ├── profile/
-│       │   ├── ui/                    shadcn/ui primitives
-│       │   ├── Sidebar.tsx
-│       │   └── Header.tsx
-│       ├── types/index.ts             TypeScript interfaces (Resume, Job, etc.)
-│       └── main.tsx
-│
-├── backend/                           Node.js / Express 5 (:8000)
-│   └── src/
-│       ├── index.js                   App entry — registers all routes
-│       ├── routes/
-│       │   ├── user.routes.js         Auth + profile CRUD
-│       │   ├── parser.routes.js       Resume upload/parse/CRUD (user-scoped)
-│       │   ├── jd.routes.js           Job description management
-│       │   ├── ats.routes.js          ATS analysis (calls Python :6050)
-│       │   ├── interview.routes.js    Interview session save + history
-│       │   ├── company.routes.js      Company data
-│       │   └── job.routes.js          LinkedIn job search (RapidAPI)
-│       ├── handlers/
-│       │   ├── user.handler.js
-│       │   ├── parser.handler.js      getAllResumes/createResume/deleteResume — all user-scoped
-│       │   ├── jd.handler.js
-│       │   ├── ats.handler.js
-│       │   ├── interview.handler.js
-│       │   └── company.handler.js
-│       ├── models/
-│       │   ├── user.model.js
-│       │   ├── parser.model.js        ParsedResume — userId required
-│       │   ├── jd.model.js
-│       │   ├── ats.model.js
-│       │   ├── interview.model.js
-│       │   ├── otp.model.js           TTL 5 min
-│       │   └── company.model.js
-│       ├── middleware/
-│       │   ├── auth.middleware.js     userAuth — verifies JWT from cookie; attaches req.user
-│       │   └── upload.middleware.js   Multer (disk: tempUploads/, allows PDF + video)
-│       └── config/
-│           ├── db.js                  MongoDB Atlas connection
-│           ├── cloudinary.js          uploadBuffer(buffer, folder, publicId)
-│           ├── firebase.js
-│           └── mailer.js              Nodemailer OTP
-│
-└── models/                            Python ML microservices
-    ├── Interview api_service/         Flask :5000
-    │   ├── interview_service.py       Entry point
-    │   └── .env                       GROQ_API_KEY, SARVAM_API_KEY, PORT
-    ├── Resume ATS and JD/
-    │   └── api_service/               Flask :6050
-    │       ├── main.py                Entry point
-    │       └── .env                   GROQ_API_KEY, GROQ_MODEL
-    └── Audio_Emotion_Analysis/        Flask :8090
-        ├── main.py                    Entry point
-        ├── model3.h5                  6-emotion TF model
-        ├── model4.h5                  7-emotion TF model
-        └── model_mw.h5               Gender detection TF model
+    api --> mongo[("MongoDB")]
+    api --> ext["Groq, Cloudinary,<br/>Gmail, RapidAPI"]
+    api --> ats["ATS service"]
+    ats --> atsx["Groq, MiniLM,<br/>ChromaDB"]
+    interview --> ai["Groq LLM and Whisper,<br/>Sarvam speech"]
+    interview --> disk[("JSON and WAV<br/>files on disk")]
+    emotion --> keras["Keras models"]
 ```
 
----
+One interview, with what happens when an outside service fails:
 
-## Running the Project
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "messageMargin": 20, "noteMargin": 6, "boxMargin": 8}}}%%
+sequenceDiagram
+    participant B as Browser
+    participant I as Interview service
+    participant A as Groq and Sarvam
 
-### Frontend
+    B->>I: start_interview
+    Note over B,A: Repeats for the introduction and each answer
+    B->>I: transcribe_audio
+    I->>A: Whisper
+    I-->>B: text to review before sending
+    Note over B,I: If this fails, type the answer instead
+    B->>I: submit_intro or submit_answer
+    I->>A: prompt and full conversation
+    A-->>I: next question
+    I->>A: read it aloud
+    I-->>B: question and audio
+    Note over I,A: If speech fails, the reply is text only
+    Note over B,A: After the closing message
+    B->>I: get_feedback
+    I-->>B: rating, 4 scores, notes
+```
+
+The browser then saves the transcript and feedback through the Express API. The [session states](docs/mock-interviews.md#session-states) and the [ATS analysis](docs/resume-and-ats.md#how-the-analysis-runs) have their own diagrams.
+
+## Tech stack
+
+| Part | Built with |
+|---|---|
+| Frontend | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4, shadcn/ui, React Router 7, Recharts 3, Framer Motion 12 |
+| API | Express 5, Mongoose 8, JWT in an HTTP-only cookie, bcrypt, Multer 2, Nodemailer 7 |
+| Interview service | Python 3.11, Flask, Groq (`qwen/qwen3.6-27b`, `whisper-large-v3-turbo`), Sarvam `bulbul:v3` |
+| ATS service | Flask, sentence-transformers (`all-MiniLM-L6-v2`), ChromaDB, Groq (`openai/gpt-oss-120b`) |
+| Emotion service | Flask, TensorFlow 2.20, librosa |
+| Storage | MongoDB, Cloudinary |
+| Hosting | Vercel for the frontend. Docker Compose and Caddy for the services, or Render. |
+
+## Quick start
+
+You need **Node.js 20.19+ or 22.12+**, **Python 3.11**, a **MongoDB** server, and keys for **Groq** and **Cloudinary**. A **Sarvam** key adds the interviewer's voice. This runs accounts, resumes and mock interviews. For the ATS Checker, job search and email sign-up, see [Setup](docs/setup.md).
+
+**1. Get the code.**
+
 ```bash
-cd frontend
-npm install
-npm run dev          # http://localhost:8080
+git clone https://github.com/LekhNayak/InterviewMate-AI_Mock_Interview_Platform.git interviewmate
+cd interviewmate
 ```
 
-### Backend
+**2. Start the API.** Same commands in bash and PowerShell.
+
 ```bash
 cd backend
-npm install
-npm run dev          # http://localhost:8000 (nodemon)
+npm ci
+cp exampleENV.txt .env
 ```
 
-### Interview Service (Python)
+Open `backend/.env` and set `MONGO_URI` (for example `mongodb://127.0.0.1:27017/interviewmate`), `SECRET_KEY` (any long random string), `GROQ_API_KEY` and the three `CLOUDINARY_` values. Then:
+
+```bash
+node seedDemoUser.js
+npm run dev
+```
+
+**3. Start the interview service** in a second terminal, from the project folder. After the `cp` line, set `GROQ_API_KEY` and `SARVAM_API_KEY` in the new `.env`.
+
+macOS or Linux (bash):
+
 ```bash
 cd "models/Interview api_service"
-pip install -r requirements.txt
-python interview_service.py     # http://localhost:5000
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp exampleENV.txt .env
+.venv/bin/python interview_service.py
 ```
 
-### ATS / Resume Service (Python)
+Windows (PowerShell):
+
+```powershell
+cd "models/Interview api_service"
+py -3.11 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+cp exampleENV.txt .env
+.venv\Scripts\python interview_service.py
+```
+
+**4. Start the frontend** in a third terminal, from the project folder.
+
+bash:
+
 ```bash
-cd "models/Resume ATS and JD/api_service"
-pip install -r requirements.txt
-python main.py                  # http://localhost:6050
+cd frontend
+npm ci
+printf '%s\n' 'VITE_API_BASE_URL=http://localhost:8000/api' 'VITE_INTERVIEW_API=http://localhost:5000/api' 'VITE_EMOTION_API=http://localhost:8090/api' > .env.local
+npm run dev
 ```
 
-### Emotion Analysis Service (Python)
-```bash
-cd models/Audio_Emotion_Analysis
-python -m venv .venv && .venv\Scripts\activate
-pip install -r requirements.txt
-python main.py                  # http://localhost:8090
+PowerShell:
+
+```powershell
+cd frontend
+npm ci
+"VITE_API_BASE_URL=http://localhost:8000/api", "VITE_INTERVIEW_API=http://localhost:5000/api", "VITE_EMOTION_API=http://localhost:8090/api" | Set-Content -Encoding ascii .env.local
+npm run dev
 ```
 
----
+**5. Open <http://localhost:8080>.** Choose **Sign In**, click the **Demo Account** box, and choose **Sign In**. Under **Simulations**, use **Upload JD** to add a job description, then **Start Simulation**.
 
-## Environment Variables
+If a step fails, see [Troubleshooting](docs/troubleshooting.md).
 
-### Backend (`backend/.env`)
-| Variable | Purpose |
+## Documentation
+
+| Page | What is in it |
 |---|---|
-| `MONGO_URI` | MongoDB Atlas connection string |
-| `PORT` | Express port (default 8000) |
-| `SECRET_KEY` | JWT signing secret |
-| `GROQ_API_KEY` | Groq LLM (resume parsing) |
-| `GROQ_MODEL` | `openai/gpt-oss-120b` |
-| `RAPIDAPI_KEY` | LinkedIn Scraper API (job search) |
-| `EMAIL_USER` / `EMAIL_PASS` | Nodemailer SMTP credentials |
-| `ML_SERVER` | Base URL for ATS Python service (`http://localhost:6050`) |
-| `CLOUDINARY_CLOUD_NAME` / `API_KEY` / `API_SECRET` | Video + PDF storage |
+| [Setup](docs/setup.md) | Every service, environment variable and port |
+| [Architecture](docs/architecture.md) | Services, data model, accounts, models in use |
+| [API reference](docs/api.md) | All endpoints |
+| [Mock interviews](docs/mock-interviews.md) | Using them, session states, failures |
+| [Resumes and the ATS Checker](docs/resume-and-ats.md) | Parsing, scoring and the analysis flow |
+| [Job search](docs/job-search.md) | How results are matched and paged |
+| [Emotion service](docs/emotion-service.md) | Standalone voice analysis API |
+| [Deployment](docs/deployment.md) | Vercel, Docker Compose on Oracle Cloud, Render |
+| [Troubleshooting](docs/troubleshooting.md) | Common errors and fixes |
 
-### Interview Service (`models/Interview api_service/.env`)
-| Variable | Purpose |
-|---|---|
-| `GROQ_API_KEY` | Groq LLM |
-| `GROQ_MODEL` | `qwen/qwen3.6-27b` |
-| `SARVAM_API_KEY` | Text-to-speech for interviewer audio |
-| `PORT` | Service port (5000) |
+## Honest limits
 
-### ATS Service (`models/Resume ATS and JD/api_service/.env`)
-| Variable | Purpose |
-|---|---|
-| `GROQ_API_KEY` | Groq LLM for ATS analysis |
-| `GROQ_MODEL` | `openai/gpt-oss-120b` |
+- **Access control is incomplete.** The interview and emotion services have no login check, and the API has not had a security review. Do not upload anything confidential.
+- **Voice emotion is not shown.** Recordings are analysed, but the result is dropped. Nothing about emotion affects your score.
+- **Video is not recorded.** The camera is only a mirror for you.
+- **An interview can end early** if the interviewer says "thank you", and recorded answers are saved without the question they answer. See [known problems](docs/mock-interviews.md#known-problems).
+- **Scores are estimates.** Feedback comes from a language model. The ATS Score is text similarity, not the result of a real applicant tracking system. Neither has been measured for accuracy.
+- **Live sessions are files on one server.** The interview service does not scale past one process, and sessions are lost when its container is rebuilt.
+- **Desktop, light theme and PDF only.** Pages are laid out for desktop screens, the moon icon does nothing, and DOCX files are not parsed.
+- **There are no automated tests.**
 
----
+## Author
 
-## Key API Endpoints
-
-### Express Backend (`localhost:8000/api/...`)
-| Method | Route | Description |
-|---|---|---|
-| POST | `/user/signup/request-otp` | Send OTP to email |
-| POST | `/user/signup/complete` | Verify OTP, create account |
-| POST | `/user/login` | Login → JWT cookie |
-| GET | `/user/profile` | Get current user profile |
-| PUT | `/user/update` | Update profile |
-| POST | `/parser/parse` | Upload PDF → Groq parse → save resume |
-| GET | `/parser/all` | Get current user's resumes only |
-| POST | `/parser/create` | Create resume (userId forced from auth) |
-| PUT | `/parser/update/:id` | Update resume (owner only) |
-| DELETE | `/parser/delete/:id` | Delete resume (owner only) |
-| POST | `/jd/parse` | Create/parse job description |
-| GET | `/jd/` | Get all public + user's JDs |
-| POST | `/ats/analyze` | Run ATS analysis (calls :6050) |
-| GET | `/ats/user` | Get user's ATS history |
-| POST | `/interview/save` | Save completed interview session |
-| GET | `/interview/user` | Get user's past interviews |
-| POST | `/jobs/search` | Search LinkedIn jobs (role + optional location + apiPage) |
-
-### Interview Python Service (`localhost:5000/api/...`)
-| Method | Route | Description |
-|---|---|---|
-| POST | `/start_interview` | Create session (role, company, resume, JD, level, duration, type) |
-| POST | `/submit_intro` | Submit user self-introduction |
-| POST | `/submit_answer` | Submit answer → receive next question |
-| POST | `/transcribe_audio` | Audio blob → transcribed text |
-| GET | `/get_feedback/:session_id` | Get final feedback JSON |
-
-### Emotion Service (`localhost:8090/api/...`)
-| Method | Route | Description |
-|---|---|---|
-| POST | `/predict` | Audio blob → emotion + gender predictions |
-
----
-
-## Data Models (MongoDB)
-
-### User
-```
-_id, name, email, password (bcrypt), age, gender,
-githubUrl, linkedinUrl, codeforcesUrl, leetcodeUrl,
-skills[], interests[], timestamps
-```
-
-### ParsedResume
-```
-_id, userId (ref User, required), title, pdfUrl (Cloudinary),
-header { name, phone, email, github },
-objective, education[], skills { languages[], frameworks[], other[] },
-projects[], activities[]
-```
-> **Security note:** All CRUD operations filter by `userId: req.user._id`. Users can only see/edit/delete their own resumes.
-
-### JobDescription
-```
-_id, url, title, company, location, description,
-requiredSkills[], jobType, uploadedBy (ref User), isPublic, timestamps
-```
-
-### ATS
-```
-_id, user (ref User), resume (ref ParsedResume), jobDescription (ref JobDescription),
-jobRole, jdMatch, missingKeywords[], profileSummary,
-technicalSkillsMatch[], softSkillsMatch[], experienceAlignment,
-improvementSuggestions[], overallComment, localAtsScore (0–100),
-topResumes[], timestamps
-```
-
-### Interview
-```
-_id, userId (ref User), role, company, interviewType, level, duration,
-jdId (ref JobDescription), resumeId (ref ParsedResume),
-video (Cloudinary URL),
-transcript [{ question, answer }],
-feedback { overall_rating, summary, strengths[], areas_for_improvement[], recommended_next_steps[] },
-timestamps
-```
-
-### OTP
-```
-_id, email, otp, createdAt (TTL: 5 minutes)
-```
-
----
-
-## Key Flows
-
-### Resume Upload & Parsing
-1. User uploads PDF via `ResumeList.tsx` → `POST /parser/parse`
-2. Multer buffers in memory → uploaded to Cloudinary, text extracted via `pdf-parse`
-3. Text sent to Groq → structured JSON returned
-4. `userId` forced from `req.user._id` (never from body) → saved as `ParsedResume`
-
-### Job Search
-1. User enters role + optional location → `POST /jobs/search` with `{ role, location, apiPage }`
-2. Backend queries LinkedIn via RapidAPI, filters results server-side by location string
-3. Frontend stores all results in `allJobs`, paginates 8 per page locally
-4. When user hits Next on the last local page, frontend fetches `apiPage + 1` and appends
-
-### Interview Simulation
-1. Frontend starts session → `POST localhost:5000/api/start_interview`
-2. User speaks → audio recorded with `MediaRecorder` → `POST /api/transcribe_audio`
-3. Transcription shown in input; user sends → `POST /api/submit_intro` or `/submit_answer`
-4. Groq generates next question; Sarvam TTS returns audio URL → played in browser
-5. On completion → `GET /api/get_feedback/:id` → feedback displayed in modal
-6. Session saved to Express backend via `POST /interview/save`
-
-### ATS Analysis
-1. User selects resume + JD → Express calls Python ATS service at `ML_SERVER`
-2. Service downloads PDF, extracts text, runs Groq analysis, queries ChromaDB for similar resumes
-3. Results saved as `ATS` document; frontend renders score + suggestions
-
-### Auth Flow
-1. `POST /user/signup/request-otp` → OTP emailed via Nodemailer
-2. `POST /user/signup/complete` → OTP verified → user created → JWT set as cookie
-3. All protected routes use `userAuth` middleware (verifies JWT from cookie, attaches `req.user`)
-4. JWT expires in 7 days
-
----
-
-## Tech Stack Summary
-
-| Layer | Technology | Notes |
-|---|---|---|
-| Frontend | React 19, TypeScript 5.9, Vite 7 | Dev on :8080 |
-| Styling | TailwindCSS 4, shadcn/ui, Radix UI | |
-| State | TanStack Query 5, React Router 7 | |
-| Animation | Framer Motion 12 | |
-| Charts | Recharts 3.3 | |
-| Backend | Express 5, Node.js | Dev on :8000 via nodemon |
-| Database | MongoDB Atlas + Mongoose 8 | |
-| Auth | JWT (cookies) + bcrypt | |
-| File Upload | Multer 2 (memory storage) | |
-| Storage | Cloudinary (video + PDF) | |
-| LLM | Groq API (qwen/qwen3.6-27b interview, openai/gpt-oss-120b parsing/ATS) | 8k TPM limit on free tier |
-| Job Search | RapidAPI — fresh-linkedin-scraper-api | |
-| Email | Nodemailer | Gmail app password |
-| Python Services | Flask 3 | Three separate processes |
-| Transcription | Groq / Sarvam (Interview service) | |
-| TTS | Sarvam AI | |
-| Embeddings | sentence-transformers (all-MiniLM-L6-v2) | ATS service |
-| Vector DB | ChromaDB | Persisted in `resume_db/` |
-| Audio/ML | TensorFlow 2.20, Librosa | Emotion service |
-
----
-
-## Production Deployment
-
-- **Frontend**: Deployed on Vercel at `https://inter-view-mate.vercel.app` and `https://efos-hackathon-interview-mate.vercel.app`.
-- **Backend**: Scalable Node.js environment with configured CORS to allow the above origins.
-- **Port Management**: In production, the backend defaults to `process.env.PORT` or `5000`.
-
----
-
-## Common Gotchas
-
-- **Groq rate limit**: Free tier is 100k tokens/day. Resume parsing (~2k tokens) + ATS analysis will hit this fast. Error: `429 rate_limit_exceeded`. Wait for daily reset or upgrade.
-- **Resume ownership**: `parser.handler.js` always sets `userId = req.user._id` and all queries include `{ userId: req.user._id }`. Never trust `userId` from `req.body`.
-- **ATS Python service port**: Backend `.env` has `ML_SERVER=http://localhost:6050`. The Interview service runs on `:5000`. Do not mix them up.
-- **Job location filter**: LinkedIn's API doesn't reliably enforce location. Backend filters results server-side by `job.location.includes(location)` after fetching.
-- **Frontend API base**: Uses `VITE_API_BASE_URL` env var. Interview page also hardcodes `http://localhost:5000/api` and `http://localhost:8090/api` for Python services.
-- **Cookie auth**: JWT is stored as an HTTP-only cookie. All fetch calls from frontend must include `credentials: "include"`.
+Built by [Lekh Nayak](https://github.com/LekhNayak). See [all contributors](https://github.com/LekhNayak/InterviewMate-AI_Mock_Interview_Platform/graphs/contributors).
