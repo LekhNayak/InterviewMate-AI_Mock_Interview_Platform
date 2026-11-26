@@ -52,7 +52,7 @@ export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string })
 
     if (loading) {
         return (
-            <div className="bg-white border border-gray-200 rounded-xl p-6 flex items-center justify-center h-64 text-gray-500 text-sm">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center h-64 text-gray-500 text-sm">
                 Loading LeetCode data…
             </div>
         );
@@ -60,7 +60,7 @@ export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string })
 
     if (!stats) {
         return (
-            <div className="bg-white border border-gray-200 rounded-xl p-6 flex items-center justify-center h-64 text-gray-500 text-sm">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center h-64 text-center text-gray-500 text-sm">
                 {username ? "LeetCode data could not be loaded." : "Add your LeetCode profile URL to see your progress."}
             </div>
         );
@@ -83,8 +83,10 @@ export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string })
                 </button>
             </div>
 
-            <div className="flex items-center justify-between flex-1 relative -top-5">
-                <div className="space-y-2 text-center px-2">
+            {/* min-h-0 lets this row take the card's remaining height, so the
+                gauge is sized by that height and not by the card's width. */}
+            <div className="flex flex-1 min-h-0 items-center justify-between gap-2 pt-2">
+                <div className="shrink-0 space-y-2 text-center">
                     <div className="py-2 px-3 bg-[#fafafa] rounded-lg">
                         <p className="text-[10px] text-gray-500">Ranking</p>
                         <p className="text-lg font-semibold text-gray-800">#{stats.ranking}</p>
@@ -95,18 +97,20 @@ export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string })
                     </div>
                 </div>
 
-                <div className="flex items-center justify-center w-full h-4/5">
-                    <LeetCodeSegmentCircle
+                <div className="flex h-full min-w-0 flex-1 items-center justify-center">
+                    <div className="aspect-square h-full max-w-full">
+                        <LeetCodeSegmentCircle
                         totalEasy={stats.totalEasy}
                         totalMedium={stats.totalMedium}
                         totalHard={stats.totalHard}
                         solvedEasy={stats.easySolved}
                         solvedMedium={stats.mediumSolved}
                         solvedHard={stats.hardSolved}
-                    />
+                        />
+                    </div>
                 </div>
 
-                <div className="space-y-2 text-center px-2 text-[10px]">
+                <div className="shrink-0 space-y-1.5 text-center text-[10px]">
                     <div className="p-2 bg-[#fafafa] rounded-lg">
                         <p className="text-[#1CBABA] font-medium">Easy</p>
                         <p className="text-gray-800 font-semibold">{stats.easySolved}/{stats.totalEasy}</p>

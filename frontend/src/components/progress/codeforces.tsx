@@ -85,7 +85,7 @@ export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: str
 
     if (!data || !ratingHistory.length) {
         return (
-            <div className="p-6 rounded-2xl bg-white shadow-sm border text-gray-600 text-sm">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 flex items-center justify-center h-64 text-center text-gray-500 text-sm">
                 {!username
                     ? "Add your Codeforces profile URL to see your rating."
                     : failed
@@ -134,7 +134,8 @@ export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: str
             </div>
 
             {/* Graph */}
-            <div className="flex-1 mt-2">
+            {/* min-h-0 lets the chart shrink back when the card gets narrower. */}
+            <div className="flex-1 min-h-0 mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                         data={chartData}
