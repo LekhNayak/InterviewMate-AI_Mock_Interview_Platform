@@ -142,6 +142,30 @@ export const sectionCount = (s: ResumeSection) => {
     return `${n} ${n === 1 ? one : many}`;
 };
 
+/**
+ * A resume as plain text, for the interviewer. Same layout as the API's
+ * resumeToText (backend/src/utils/resumeFormat.js); hidden sections are left out.
+ */
+export const resumeToText = (resume: Resume) => {
+    const h = resume.header;
+    const lines: string[] = [h.name, [h.email, h.phone, h.location].filter(Boolean).join(" | ")];
+    for (const l of h.links) lines.push(`${l.label}: ${l.url}`);
+    for (const s of resume.sections) {
+        if (s.hidden) continue;
+        lines.push("", s.heading.toUpperCase());
+        if (s.kind === "text") lines.push(s.text);
+        if (s.kind === "list") s.items.forEach((item) => lines.push(`- ${item}`));
+        if (s.kind === "skills") s.groups.forEach((g) => lines.push(`${g.label}: ${g.items.join(", ")}`));
+        if (s.kind === "entries") {
+            for (const e of s.entries) {
+                lines.push([e.title, e.subtitle, e.date, e.meta].filter(Boolean).join(" | "));
+                e.bullets.forEach((b) => lines.push(`- ${b}`));
+            }
+        }
+    }
+    return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+};
+
 export const displayUrl = (url: string) => url.replace(/^(https?:\/\/(www\.)?|mailto:)/i, "").replace(/\/$/, "");
 export const hrefFor = (url: string) => (/^(https?:|mailto:)/i.test(url) ? url : `https://${url}`);
 

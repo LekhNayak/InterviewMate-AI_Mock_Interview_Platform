@@ -4,6 +4,7 @@ import { ArrowLeft, Trash2, MapPin, Briefcase, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
 import TopNav from "@/components/DashboardContent/TopNav";
+import { jdToText } from "@/lib/jd";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
@@ -86,16 +87,7 @@ export default function JdOnboarding() {
             const data = await res.json();
             if (!data.success) return toast.error("Failed to parse resume: " + (data.error || "Unknown error"));
 
-            const jdText = `
-Job Title: ${modalJd.title}
-Company: ${modalJd.company}
-Location: ${modalJd.location}
-Job Type: ${modalJd.jobType}
-Required Skills: ${(modalJd.requiredSkills || []).join(", ")}
-
-Description:
-${modalJd.description || ""}
-`.trim();
+            const jdText = jdToText(modalJd);
 
             navigate("/interview", {
                 state: {
