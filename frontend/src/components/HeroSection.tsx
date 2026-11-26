@@ -4,8 +4,6 @@ import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import laptopImage from "@/assets/image1.png";
 import Header from "@/components/Header";
-import laptopImage1 from "@/assets/image1.png";
-import laptopImage2 from "@/assets/image1.png";
 
 const HeroSection = () => {
     const navigate = useNavigate();
@@ -99,7 +97,7 @@ const HeroSection = () => {
                 }}
             >
                 <img
-                    src={laptopImage1}
+                    src={laptopImage}
                     alt="Laptop"
                     className="w-[45vw] max-w-[900px] transition-transform duration-200 ease-out"
                 />
@@ -112,7 +110,7 @@ const HeroSection = () => {
                 }}
             >
                 <img
-                    src={laptopImage2}
+                    src={laptopImage}
                     alt="Laptop"
                     className="w-[45vw] max-w-[900px] transition-transform duration-200 ease-out"
                 />

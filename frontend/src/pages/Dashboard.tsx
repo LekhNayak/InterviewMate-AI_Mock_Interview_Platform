@@ -5,7 +5,7 @@ import Sidebar from "@/components/Sidebar";
 
 import DashboardHome from "@/components/DashboardContent/DashboardHome";
 import Simulations from "@/components/DashboardContent/Simulations";
-import Test from "@/components/DashboardContent/test";
+import ResumeBuilder from "@/components/DashboardContent/ResumeBuilder";
 import ATSChecker from "@/components/DashboardContent/ATSChecker";
 import TopNav from "@/components/DashboardContent/TopNav";
 import JobFinder from "@/components/DashboardContent/Jobfinder";
@@ -33,7 +33,7 @@ export default function Dashboard() {
             return scroll(<Simulations search={search} setSearch={setSearch} />);
 
         case "Resume Building":
-            return scroll(<Test />);
+            return scroll(<ResumeBuilder />);
 
         case "Resume ATS Checker":
             return <ATSChecker />;

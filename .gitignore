@@ -108,10 +108,11 @@ tmp/
 config.env
 *.env
 
-# Python cache
+# Python cache and virtual environments
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
 
 # brag launch-video output
 brag-output/

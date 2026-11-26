@@ -37,7 +37,7 @@ deploy/                           Docker Compose, Caddyfile and keep-alive scrip
 render.yaml                       Alternative Render deployment
 ```
 
-The **Resume Building** tab is `DashboardContent/test.tsx`. `Resume.tsx`, `Performance.tsx`, `Settings.tsx` and `Support.tsx` in the same folder are not reachable from the sidebar. `config/firebase.js` is an empty stub left from before the move to Cloudinary. `routes/interviewcalender.routes.js` exists but is not mounted. The dashboard calendar is built from saved interviews instead.
+The **Resume Building** tab is `DashboardContent/ResumeBuilder.tsx`. The dashboard calendar is built from saved interviews.
 
 ## Accounts and sessions
 

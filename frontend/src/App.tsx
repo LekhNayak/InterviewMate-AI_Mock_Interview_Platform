@@ -12,7 +12,7 @@ import JdOnboarding from "./pages/JdOnboarding";
 import Reviews from "./pages/Reviews";
 import NotFound from "./pages/NotFound";
 
-import Test from "./components/DashboardContent/test";
+import ResumeBuilder from "./components/DashboardContent/ResumeBuilder";
 
 const queryClient = new QueryClient();
 
@@ -38,7 +38,7 @@ const App = () => (
           <Route path="/interview" element={<Interview />} />
           <Route path="/jd/onboarding" element={<JdOnboarding />} />
           <Route path="/reviews" element={<Reviews />} />
-          <Route path="/test" element={<Test />} />
+          <Route path="/test" element={<ResumeBuilder />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
