@@ -10,16 +10,16 @@
 # 60s of work every 10 minutes is a 10% duty cycle, which leaves margin.
 #
 # Install (as the ubuntu user on the VM):
-#   chmod +x ~/Efos-Virtual-Hack/deploy/keepalive.sh
+#   chmod +x ~/interviewmate/deploy/keepalive.sh
 #   crontab -e
-#   */10 * * * * /home/ubuntu/Efos-Virtual-Hack/deploy/keepalive.sh >> /var/log/keepalive.log 2>&1
+#   */10 * * * * /home/ubuntu/interviewmate/deploy/keepalive.sh >> /var/log/keepalive.log 2>&1
 
 set -uo pipefail
 
 BURN_SECONDS="${BURN_SECONDS:-60}"
 HOSTS=(
-	"https://api.lekh.online/health"
-	"https://interview.lekh.online/"
+	"https://interview.lekh.online/api/health"
+	"https://ats.lekh.online/api/health"
 	"https://emotion.lekh.online/api/health"
 )
 

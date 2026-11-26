@@ -4,8 +4,9 @@ const ParsedResume = require('../models/parser.model');
 const { canReadJd, jdToText } = require('../utils/jdText');
 const axios = require('axios');
 const FormData = require('form-data');
+const { signServiceToken } = require('../utils/serviceToken');
 
-async function callMLService(jd_text, pdfUrl) {
+async function callMLService(jd_text, pdfUrl, userId) {
     const pdfRes = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 20000 });
     const pdfBuffer = Buffer.from(pdfRes.data);
 
@@ -13,9 +14,14 @@ async function callMLService(jd_text, pdfUrl) {
     form.append('jd_text', jd_text);
     form.append('file', pdfBuffer, { filename: 'resume.pdf', contentType: 'application/pdf' });
 
+    // The ATS service is public when the API runs on Vercel, so it gets the same
+    // kind of token the browser sends to the interview and emotion services.
+    const token = signServiceToken(userId, '5m');
+    const headers = form.getHeaders(token ? { Authorization: `Bearer ${token}` } : {});
+
     try {
         const mlResponse = await axios.post(`${process.env.ML_SERVER}/api/analyze`, form, {
-            headers: form.getHeaders(),
+            headers,
             timeout: 60000,
         });
         return mlResponse.data;
@@ -79,7 +85,7 @@ const analyze = async (req, res) => {
         const resume = await findUsableResume(req, res, resumeId);
         if (!resume) return;
 
-        const data = await callMLService(jdToText(job), resume.pdfUrl);
+        const data = await callMLService(jdToText(job), resume.pdfUrl, req.user._id);
 
         const atsRecord = await ATS.create({
             user: req.user._id,
@@ -190,7 +196,7 @@ const quickAnalyze = async (req, res) => {
 
         const jd_text = `Job Role: ${jobRole}\n\nThis position requires skills and experience relevant to the role of ${jobRole}. The candidate should demonstrate strong technical and soft skills aligned with this role.`;
 
-        const data = await callMLService(jd_text, resume.pdfUrl);
+        const data = await callMLService(jd_text, resume.pdfUrl, req.user._id);
 
         const atsRecord = await ATS.create({
             user: req.user._id,

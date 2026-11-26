@@ -14,6 +14,8 @@ from groq import Groq
 from sentence_transformers import SentenceTransformer, util
 import chromadb
 
+from service_auth import install_auth
+
 
 # ---------------------------------
 # Environment and global resources
@@ -239,6 +241,9 @@ def get_gemini_response(resume_text: str, jd: str) -> str:
 # ---------------------------------
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+# Only the Express API calls this service. With SERVICE_TOKEN_SECRET set, it must
+# send a token signed with the same secret.
+install_auth(app, public_paths=("/", "/api/health"))
 
 @app.route("/", methods=["GET"])
 def root():

@@ -9,7 +9,7 @@ InterviewMate is a React frontend, an Express API and three Flask services. The 
 | Browser | Express API | Yes, by JWT cookie, on every route except sign-up, login, the demo routes, logout, `GET /api/companies` and `/health` |
 | Browser | Interview service | By a short-lived token from the API, if `SERVICE_TOKEN_SECRET` is set. A session then belongs to the user who started it. Audio files are public under random names. |
 | Browser | Emotion service | By the same token |
-| Express API | ATS service | No. In the Docker setup it is not reachable from outside. |
+| Express API | ATS service | By a 5-minute token the API signs for each request, if `SERVICE_TOKEN_SECRET` is set |
 | Browser | Codeforces API, a public LeetCode API | Not applicable. These are public profile lookups for the dashboard. |
 
 ## Repository layout

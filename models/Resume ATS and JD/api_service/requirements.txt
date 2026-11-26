@@ -7,5 +7,6 @@ chromadb
 sentence-transformers
 requests
 gunicorn
+PyJWT>=2.8.0
 
 tqdm

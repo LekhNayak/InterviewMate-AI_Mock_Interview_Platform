@@ -82,6 +82,8 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+      - key: SERVICE_TOKEN_SECRET
+        sync: false
 
   # Flask emotion-recognition service — TensorFlow + OpenCV + librosa need system libs
   # (libgl1, libsndfile1) that Render's native Python builder can't install, hence Docker.

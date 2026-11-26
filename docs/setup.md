@@ -128,6 +128,7 @@ Same steps in `models/Resume ATS and JD/api_service`. The last command runs `mai
 | `GROQ_API_KEY` | Groq key for the written report |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` |
 | `PORT` | Optional, default `6050` |
+| `SERVICE_TOKEN_SECRET` | Optional. See [Service tokens](#service-tokens). |
 | `RESUME_DB_PATH` | Optional. Folder of the ChromaDB index to search. Must already exist. |
 | `PLACED_RESUME_PATH` | Optional, read by `build_database.py` only. Folder of PDFs to index. |
 
@@ -157,15 +158,16 @@ Vite reads these values when it starts, so restart it after a change. `npm run b
 
 ## Service tokens
 
-The browser calls the interview and emotion services directly. To limit them to signed-in users, set the same `SERVICE_TOKEN_SECRET` (32 characters or more) in three places:
+The browser calls the interview and emotion services directly, and the API calls the ATS service. To limit them to signed-in users, set the same `SERVICE_TOKEN_SECRET` (32 characters or more) in four places:
 
 | File | Service |
 |---|---|
 | `backend/.env` | Express API, which issues the tokens |
 | `models/Interview api_service/.env` | Interview service |
 | `models/Audio_Emotion_Analysis/.env` | Emotion service |
+| `models/Resume ATS and JD/api_service/.env` | ATS service |
 
-The API gives a signed-in user a token that lasts 3 hours, and the services reject requests without one. An interview session can then be read only by the user who started it. If the variable is empty, the services accept every request and print a warning when they start.
+The API gives a signed-in user a token that lasts 3 hours, and signs a 5-minute token for each ATS request. The services reject requests without one. An interview session can then be read only by the user who started it. If the variable is empty, the services accept every request and print a warning when they start.
 
 ## If something fails
 

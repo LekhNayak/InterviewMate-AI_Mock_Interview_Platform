@@ -34,6 +34,18 @@ app.use((req, res, next) => {
     next();
 });
 
+// Every API route reads MongoDB. Waiting here also covers Vercel, where a cold
+// instance has no connection yet when its first request arrives.
+app.use("/api", async (req, res, next) => {
+    try {
+        await connect();
+        next();
+    } catch (err) {
+        console.error("Database connection failed:", err.message);
+        res.status(503).json({ success: false, message: "Database unavailable. Try again shortly." });
+    }
+});
+
 // API Routes
 app.use("/api/user", userRouter);
 app.use("/api/parser", parserRouter);
@@ -42,8 +54,10 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/ats", atsRouter);
 app.use("/api/interview", interviewRouter);
 app.use("/api/jobs", jobRoutes);
-// Health check — reports DB state without needing the DB
-app.get("/health", (req, res) => {
+// Health check — answers even when the DB is down, and reports its state.
+// It tries to connect first, because a fresh Vercel instance has no connection yet.
+app.get("/health", async (req, res) => {
+    await connect().catch(() => {});
     const states = ["disconnected", "connected", "connecting", "disconnecting"];
     res.json({
         server: "up",
@@ -61,18 +75,23 @@ app.use((err, req, res, next) => {
 });
 
 if (!process.env.SERVICE_TOKEN_SECRET) {
-    console.log("⚠️  SERVICE_TOKEN_SECRET is not set: the interview and emotion services accept requests without a login".yellow);
+    console.log("⚠️  SERVICE_TOKEN_SECRET is not set: the interview, emotion and ATS services accept requests without a login".yellow);
 }
 
-// Start server first so non-DB routes stay available even if Mongo is down
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`.magenta);
-});
-
-// Then connect to the database in the background
-connect()
-    .then(() => console.log("✅ Connected to database".cyan))
-    .catch((err) => {
-        console.log("❌ Database connection failed".red, err.message);
-        console.log("⚠️  Server is still up; DB-backed routes will fail until Mongo is reachable".yellow);
+// `node src/index.js` (local, Docker) starts a server. Vercel imports this file
+// and serves the exported app itself.
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`.magenta);
     });
+
+    // Connect early to report the result. API requests also wait for it.
+    connect()
+        .then(() => console.log("✅ Connected to database".cyan))
+        .catch((err) => {
+            console.log("❌ Database connection failed".red, err.message);
+            console.log("⚠️  Server is still up; API routes retry the connection on each request".yellow);
+        });
+}
+
+module.exports = app;

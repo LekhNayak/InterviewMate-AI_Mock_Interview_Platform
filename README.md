@@ -117,7 +117,7 @@ The browser then saves the transcript, feedback and averaged voice reading throu
 | ATS service | Flask, sentence-transformers (`all-MiniLM-L6-v2`), ChromaDB, Groq (`openai/gpt-oss-120b`) |
 | Emotion service | Flask, TensorFlow 2.20, librosa |
 | Storage | MongoDB, Cloudinary |
-| Hosting | Vercel for the frontend. Docker Compose and Caddy for the services, or Render. |
+| Hosting | Vercel for the frontend and API. Docker Compose and Caddy on Oracle Cloud for the three Python services, or Render. |
 
 ## Quick start
 
@@ -196,11 +196,11 @@ If a step fails, see [Troubleshooting](docs/troubleshooting.md).
 
 ## Honest limits
 
-- **Not security reviewed.** Do not upload anything confidential. The interview and emotion services check for a login only when `SERVICE_TOKEN_SECRET` is set.
+- **Not security reviewed.** Do not upload anything confidential. The interview, emotion and ATS services check for a login only when `SERVICE_TOKEN_SECRET` is set.
 - **Scores are estimates.** Feedback comes from a language model. The ATS Score is text similarity, not the result of a real applicant tracking system. Neither has been measured for accuracy.
 - **Voice emotion is experimental.** The models' accuracy has not been measured here, and the reading does not affect your score.
 - **Video is not recorded.** The camera is only a mirror for you.
-- **Live sessions are files on one server.** The interview service does not scale past one process, and unfinished sessions are lost when its container is rebuilt.
+- **Live sessions are files on one server.** The interview service does not scale past one process.
 - **Desktop, light theme and PDF only.** Pages are laid out for desktop screens, and other resume formats are not parsed.
 - **There are no automated tests.**
 

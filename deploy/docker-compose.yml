@@ -1,32 +1,22 @@
-# InterViewMate — full stack for a single Oracle Cloud Ampere A1 VM (ARM64).
+# InterviewMate — the three Python services on one Oracle Cloud Ampere A1 VM
+# (ARM64), behind Caddy. The frontend and the Express API run on Vercel.
 #
 # Run from this directory:  docker compose up -d --build
 #
 # Each service reads its secrets from its own .env file (same layout as local
-# dev). Values under `environment:` override anything in those files, which is
-# how PORT and ML_SERVER get rewired for container networking.
+# dev). Values under `environment:` override anything in those files.
 
 services:
-  backend:
-    build:
-      context: ../backend
-    env_file: ../backend/.env
-    environment:
-      NODE_ENV: production
-      PORT: 5000
-      # Container-to-container: the ATS service is reachable by service name,
-      # so it never needs to be exposed publicly.
-      ML_SERVER: http://ats:6050
-    restart: unless-stopped
-    depends_on:
-      - ats
-
   interview:
     build:
       context: "../models/Interview api_service"
     env_file: "../models/Interview api_service/.env"
     environment:
       PORT: 5000
+    volumes:
+      # Live sessions and feedback are JSON files here. The volume keeps
+      # interviews in progress through a rebuild.
+      - interview_data:/app/data
     restart: unless-stopped
 
   ats:
@@ -59,10 +49,11 @@ services:
       - caddy_config:/config
     restart: unless-stopped
     depends_on:
-      - backend
       - interview
+      - ats
       - emotion
 
 volumes:
+  interview_data:
   caddy_data:
   caddy_config:

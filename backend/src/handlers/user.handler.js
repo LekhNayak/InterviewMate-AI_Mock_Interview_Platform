@@ -1,5 +1,4 @@
 const crypto = require("crypto");
-const jwt = require("jsonwebtoken");
 const User = require('../models/user.model');
 const OTP = require('../models/otp.model');
 const ParsedResume = require('../models/parser.model');
@@ -8,6 +7,7 @@ const ATS = require('../models/ats.model');
 const Interview = require('../models/interview.model');
 const sendEmail = require('../config/mailer');
 const { validateSignUpData } = require('../utils/validate');
+const { signServiceToken } = require('../utils/serviceToken');
 const { cookieOptions, clearCookieOptions, AUTH_COOKIE_MAX_AGE } = require('../config/cookie');
 
 const MAX_OTP_ATTEMPTS = 5;
@@ -171,11 +171,9 @@ const demoLogin = async (req, res) => {
 // `token` is null when SERVICE_TOKEN_SECRET is not set, and the services then
 // accept requests without one.
 const serviceToken = (req, res) => {
-    const secret = process.env.SERVICE_TOKEN_SECRET;
-    if (!secret) return res.json({ success: true, token: null });
-
     const expiresIn = 3 * 60 * 60;
-    const token = jwt.sign({ sub: String(req.user._id) }, secret, { audience: 'interviewmate-services', expiresIn });
+    const token = signServiceToken(req.user._id, expiresIn);
+    if (!token) return res.json({ success: true, token: null });
     res.json({ success: true, token, expiresIn });
 };
 
