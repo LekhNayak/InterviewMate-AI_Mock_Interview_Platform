@@ -1,39 +1,86 @@
-export interface Education {
-    institution: string;
-    degree: string;
-    duration: string;
-    score: string;
+// A resume is a header and an ordered list of sections. The API cleans and
+// stores the same shape (backend/src/utils/resumeFormat.js).
+
+export interface ResumeLink {
+    label: string;
+    url: string;
 }
 
-export interface Project {
+export interface ResumeHeader {
+    name: string;
+    email: string;
+    phone: string;
+    location: string;
+    links: ResumeLink[];
+}
+
+/** One item of an entries section: a job, a degree, a project. */
+export interface ResumeEntry {
+    id: string;
     title: string;
-    duration: string;
-    tech: string;
-    event: string;
-    points: string[];
+    subtitle: string;
+    date: string;
+    /** Shown on the right of the second line: location, grade, link. */
+    meta: string;
+    bullets: string[];
+}
+
+export interface SkillGroup {
+    id: string;
+    label: string;
+    items: string[];
+}
+
+/** Picks the field labels of an entries section in the editor. */
+export type EntryPreset = "experience" | "education" | "projects" | "custom";
+
+interface SectionBase {
+    id: string;
+    heading: string;
+    hidden?: boolean;
+}
+
+export type TextSection = SectionBase & { kind: "text"; text: string };
+export type EntriesSection = SectionBase & { kind: "entries"; preset: EntryPreset; entries: ResumeEntry[] };
+export type SkillsSection = SectionBase & { kind: "skills"; groups: SkillGroup[] };
+export type ListSection = SectionBase & { kind: "list"; items: string[] };
+export type ResumeSection = TextSection | EntriesSection | SkillsSection | ListSection;
+export type SectionKind = ResumeSection["kind"];
+
+/** Page settings, saved with each resume. Sizes in pt, margins in mm. */
+export interface ResumeLayout {
+    fontSize: number;
+    lineHeight: number;
+    margin: number;
+    sectionGap: number;
+    entryGap: number;
+}
+
+/** What the importer found in an uploaded file. */
+export interface ImportReport {
+    source: "pdf" | "tex";
+    fileName: string;
+    sections: { heading: string; kind: SectionKind; preset?: EntryPreset; count: number }[];
+    checkedLines: number;
+    matchedLines: number;
+    /** Lines of the file whose words are mostly missing from the result. */
+    missed: string[];
+    /** Section headings in a .tex file that no extracted section has. */
+    missingHeadings: string[];
+    truncated: boolean;
 }
 
 export interface Resume {
     _id?: string;
-
-    userId?: string;
     title: string;
+    /** The uploaded PDF. The ATS Checker reads it. */
     pdfUrl?: string;
-    header: {
-        name: string;
-        phone: string;
-        email: string;
-        github: string;
-    };
-    objective: string;
-    education: Education[];
-    skills: {
-        languages: string[];
-        frameworks: string[];
-        other: string[];
-    };
-    projects: Project[];
-    activities: string[];
+    source?: "pdf" | "tex" | "scratch";
+    sourceName?: string;
+    header: ResumeHeader;
+    sections: ResumeSection[];
+    layout: ResumeLayout;
+    importReport?: ImportReport;
 }
 
 export interface User {

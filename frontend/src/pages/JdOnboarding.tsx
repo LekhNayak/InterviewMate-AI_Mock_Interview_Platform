@@ -105,7 +105,8 @@ ${modalJd.description || ""}
                     level,
                     duration,
                     interviewType,
-                    resume: data.resume,
+                    // Plain text: the interviewer reads it in every prompt.
+                    resume: data.resumeText,
                     jdId: modalJd._id,
                     resumeId: data.resume?._id,
                 },

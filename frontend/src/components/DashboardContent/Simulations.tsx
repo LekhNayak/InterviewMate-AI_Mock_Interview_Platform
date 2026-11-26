@@ -158,7 +158,8 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                     level: selectedLevel,
                     duration: selectedDuration,
                     interviewType: selectedInterviewType,
-                    resume: data.resume,
+                    // Plain text: the interviewer reads it in every prompt.
+                    resume: data.resumeText,
                     jdId: selectedRole._id,
                     resumeId: data.resume?._id,
                 },

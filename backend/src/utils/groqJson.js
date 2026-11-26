@@ -62,21 +62,46 @@ const extractJson = (raw) => {
     throw new Error('AI returned incomplete JSON (response was cut off)');
 };
 
+// Reasoning models spend completion tokens thinking before they answer. For
+// copying text into fields, the least thinking each model allows is enough.
+const minimalReasoning = (model) => {
+    if (/gpt-oss/i.test(model)) return 'low';
+    if (/qwen3/i.test(model)) return 'none';
+    return undefined;
+};
+
 /**
  * Chat completion constrained to a JSON object, with truncation surfaced
  * as a readable error instead of a downstream parse crash.
+ *
+ * schema:          { name, schema } makes the model follow that JSON Schema exactly.
+ *                  Models without structured outputs fall back to plain JSON mode.
+ * minimalThinking: asks a reasoning model to think as little as it allows.
  */
-const completeJson = async ({ system, user, maxTokens = DEFAULT_MAX_TOKENS, temperature = 0.2 }) => {
-    const completion = await groq.chat.completions.create({
-        model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+const completeJson = async ({ system, user, maxTokens = DEFAULT_MAX_TOKENS, temperature = 0.2, schema, minimalThinking = false }) => {
+    const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+    const request = (responseFormat) => groq.chat.completions.create({
+        model,
         messages: [
             { role: 'system', content: system },
             { role: 'user', content: user },
         ],
         temperature,
         max_tokens: maxTokens,
-        response_format: { type: 'json_object' },
+        response_format: responseFormat,
+        ...(minimalThinking && minimalReasoning(model) ? { reasoning_effort: minimalReasoning(model) } : {}),
     });
+
+    let completion;
+    if (schema) {
+        try {
+            completion = await request({ type: 'json_schema', json_schema: { name: schema.name, schema: schema.schema, strict: true } });
+        } catch (err) {
+            if (err?.status !== 400) throw err;
+            console.warn(`[groq] ${model} refused the JSON schema, using JSON mode: ${err.message}`);
+        }
+    }
+    completion ??= await request({ type: 'json_object' });
 
     const choice = completion.choices[0];
 

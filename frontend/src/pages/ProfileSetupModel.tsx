@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/errors";
+import type { ResumeSection } from "@/types";
 
 interface Props {
     open: boolean;
@@ -51,13 +52,8 @@ const ProfileSetupModal = ({ open, onClose, onComplete }: Props) => {
             const parsed = await parseRes.json();
             if (!parseRes.ok) throw new Error(parsed.error || "The resume could not be read");
 
-            const parsedSkills = parsed?.resume?.skills || {};
-
-            const skillList = [
-                ...(parsedSkills.languages || []),
-                ...(parsedSkills.frameworks || []),
-                ...(parsedSkills.other || []),
-            ];
+            const sections: ResumeSection[] = parsed?.resume?.sections || [];
+            const skillList = sections.flatMap((s) => (s.kind === "skills" ? s.groups.flatMap((g) => g.items) : []));
 
             const updateRes = await fetch(`${API}/user/update`, {
                 method: "PUT",

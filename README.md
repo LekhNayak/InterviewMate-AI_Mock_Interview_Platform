@@ -50,7 +50,8 @@ These were taken from the app running locally with fictional data and a drawing 
 
 **Prepare a resume**
 
-- Turn a PDF resume into editable fields, or start from scratch, and download it as PDF or LaTeX.
+- Turn a PDF or `.tex` resume into editable sections, with a report of what was read, or start from scratch.
+- Edit on real A4 pages: reorder sections, drag the spacing, fit to one page, then download a PDF or LaTeX, or open it in Overleaf.
 - Compare a resume with a job description or a role name for an ATS score, missing keywords and suggestions.
 
 **Find work and track progress**

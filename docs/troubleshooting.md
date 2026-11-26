@@ -26,7 +26,7 @@
 | Symptom | Cause and fix |
 |---|---|
 | `Only PDF files are supported` | Export the document as a PDF. Other formats are not parsed. |
-| `File too large` | PDFs can be up to 10 MB. |
+| `File too large` | PDFs and `.tex` files can be up to 4 MB. |
 | `AI response was truncated` | The document is too long to parse in one pass. Shorten it. |
 | Groq error 413 or 429 | The request is over your Groq limit. Parsing is sized for 8,000 tokens per minute. Wait a minute and retry. |
 | `This resume has no PDF` in the ATS Checker | It was made from scratch. Upload it as a PDF to analyze it. |

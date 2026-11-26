@@ -32,6 +32,19 @@ const uploadPdf = multer({
     fileFilter: allowOnly(['application/pdf'], 'Only PDF files are supported'),
 });
 
+// A resume is a PDF or LaTeX source. Browsers give .tex files varying types,
+// so it is recognised by its extension.
+const uploadResume = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_PDF_BYTES },
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf' || /\.tex$/i.test(file.originalname)) return cb(null, true);
+        const err = new Error('Upload a PDF or a .tex file');
+        err.status = 400;
+        cb(err, false);
+    },
+});
+
 // Videos go through disk, so create the folder on first use.
 const uploadVideo = multer({
     storage: multer.diskStorage({
@@ -43,4 +56,4 @@ const uploadVideo = multer({
     fileFilter: allowOnly(VIDEO_TYPES, 'Only video files are supported'),
 });
 
-module.exports = { uploadPdf, uploadVideo };
+module.exports = { uploadPdf, uploadResume, uploadVideo };

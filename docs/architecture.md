@@ -57,13 +57,15 @@ All collections are in MongoDB through Mongoose.
 |---|---|
 | User | name, email, password (hash), age, gender, GitHub, LinkedIn, Codeforces and LeetCode URLs, skills, interests |
 | OTP | email, otp, attempts, createdAt (expires after 300 seconds) |
-| ParsedResume | userId, title, pdfUrl, header, objective, education, skills, projects, activities |
+| ParsedResume | userId, title, pdfUrl, source and sourceName (PDF, .tex or made in the builder), header (name, email, phone, location, links), sections, layout, importReport |
 | JobDescription | url, title, company, location, description, requiredSkills, jobType, uploadedBy, isPublic |
 | ATS | user, resume, jobDescription or jobRole, jdMatch, missingKeywords, profileSummary, technicalSkillsMatch, softSkillsMatch, experienceAlignment, improvementSuggestions, projectsAnalysis, overallComment, localAtsScore |
 | Interview | userId, type, interviewType, role, company, level, duration, transcript, feedback (rating, four scores, summary, strengths, areas, next steps, voice emotion), jdId, resumeId, optional video |
 | Company | name, role, brief, type, mode, color, link, pdf. Not used by the frontend. |
 
-A resume has a `pdfUrl` only if it was uploaded as a PDF. Clients cannot set `pdfUrl` or the owner. The app does not save `video`.
+A resume's `sections` are in order, and each is a paragraph, dated entries, skill groups or a list. [backend/src/utils/resumeFormat.js](../backend/src/utils/resumeFormat.js) defines the format and cleans every resume the API stores. Resumes saved before it have fixed fields (objective, education, skills, projects, activities), which are converted when read and removed on the next save.
+
+A resume has a `pdfUrl` only if it was uploaded as a PDF. Clients cannot set `pdfUrl`, the owner or the import report. The app does not save `video`.
 
 Live interview sessions are not in MongoDB. The interview service keeps them in JSON files until the browser saves the finished transcript through the API.
 
@@ -71,7 +73,7 @@ Live interview sessions are not in MongoDB. The interview service keeps them in 
 
 | File | Stored in | Notes |
 |---|---|---|
-| Resume and JD PDFs | Cloudinary, as raw files with public URLs | Up to 10 MB |
+| Resume and JD PDFs | Cloudinary, as raw files with public URLs | Up to 4 MB. Uploaded `.tex` files are read and not kept. |
 | Interviewer audio | `static/recordings` in the interview service | One WAV per reply |
 | Candidate recordings | Not kept | Both services delete them after the request |
 
@@ -81,7 +83,8 @@ The camera feed is only shown to the candidate. It is not uploaded or recorded.
 
 | Task | Model | Settings |
 |---|---|---|
-| Resume and JD parsing | `GROQ_MODEL`, default `openai/gpt-oss-120b` | JSON mode, temperature 0.2, 3000 tokens, input cut at 16,000 characters |
+| Resume import | `GROQ_MODEL`, default `openai/gpt-oss-120b` | Structured output with a strict JSON schema (JSON mode if the model has none), low reasoning effort, temperature 0.2, up to 6000 tokens within the 8000-per-minute budget, input cut at 16,000 characters |
+| JD parsing | `GROQ_MODEL`, default `openai/gpt-oss-120b` | JSON mode, temperature 0.2, 3000 tokens, input cut at 16,000 characters |
 | Interview questions and feedback | `GROQ_MODEL`, default `qwen/qwen3.6-27b` | Temperature 0.4, 350 tokens per question and 1200 for feedback, reasoning off for Qwen |
 | Transcription | `whisper-large-v3-turbo` on Groq | |
 | Interviewer voice | Sarvam `bulbul:v3`, speaker `ritu`, `en-IN` | Text split into chunks of up to 490 characters, synthesised in parallel and joined |

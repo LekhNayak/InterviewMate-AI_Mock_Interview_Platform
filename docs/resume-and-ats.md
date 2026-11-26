@@ -4,22 +4,38 @@
 
 ![Resume Building tab with a formatted resume preview, a skills editor and the resume library](screenshots/resume-builder.png)
 
-**Resume Building** has a preview, a tabbed editor (About, Education, Skills, Projects, Activities) and your resume library.
+**Resume Building** has the resume on A4 pages, an editor and your resume library.
 
-- **Add Resume**, then **Upload PDF**, parses a PDF into fields. **Create from Scratch** adds an empty resume.
-- **Save Resume** stores your edits.
-- The menu on each resume has **Rename**, **Download PDF**, **Download LaTeX** and **Delete**.
+A resume is your name and contact details, then sections in the order you choose. A section is a paragraph (summary), dated entries (experience, education, projects, anything similar), skill groups, or a list (certifications, awards, activities).
 
-The PDF has selectable text. It uses a standard PDF font, so characters outside Western European alphabets may not print.
+- **Upload PDF or .tex** reads a file into sections and shows what it found. **New resume** starts with empty Summary, Experience, Education, Projects and Skills sections.
+- In the editor, open a section to change its heading and contents. Drag the handle or use the arrows to reorder sections and entries, the eye to leave a section out of the PDF, and **Add section** for more. In a bullet, Enter adds the next bullet.
+- Click a section on the pages to open it in the editor.
+- **Save**, or Ctrl+S, stores the open resume. A dot in the library marks unsaved changes.
+- The menu on each resume has **Rename**, **Duplicate**, **Import report** and **Delete**. **Duplicate** saves a copy, for example to tailor one for each job.
 
-### How parsing works
+### Pages and spacing
 
-1. The PDF is uploaded to Cloudinary.
-2. `pdf-parse` extracts the text, which is cut at 16,000 characters.
-3. Groq returns JSON for the header, objective, education, skills, projects and activities.
-4. The resume is saved under your account. The server sets the owner and the PDF link itself and ignores any sent by the client.
+The preview is what prints: A4 pages, and a page number when there is more than one. A heading is never left at the bottom of a page, and an entry's title moves to the next page with its first bullet.
 
-Only PDF files are accepted, up to 10 MB.
+- Drag the gap between two sections, or two entries, to change that spacing everywhere. A gap can also be focused with Tab and changed with the arrow keys.
+- **Layout** sets the font size, line spacing, margins and both gaps. **Fit to one page** tightens them a step at a time, gaps first and font size last, until the resume fits.
+- These settings are saved with each resume.
+
+**PDF** opens the browser's print dialog with only the resume in it. Choose **Save as PDF**. The PDF has selectable text and the same pages as the preview.
+
+**LaTeX** downloads a `.tex` file with the same sections, order and spacing, or opens it as a new project on Overleaf (a free account is needed). It builds with pdfLaTeX and standard packages. Emoji are left out of it.
+
+### How uploads are read
+
+1. A PDF's text is extracted with `pdf-parse`. A `.tex` file is read as source, without its comments and package setup.
+2. Groq returns the header and every section, in the file's order and with its headings. A strict JSON schema fixes the shape of the answer.
+3. Each line of the file is compared with the result. A line counts as captured when most of its words are in the resume.
+4. The resume is saved under your account, and the PDF is stored for the ATS Checker. The server sets the owner, the PDF link and the report itself.
+
+The report after an upload lists each section with what it became and how many entries it has, the share of lines captured, any lines that were not, and, for a `.tex` file, headings with no section. **Discard import** deletes the resume. The report stays available from the library menu.
+
+PDF and `.tex` files are accepted, up to 4 MB. A scanned PDF is an image and cannot be read.
 
 ## Check a resume against a job
 

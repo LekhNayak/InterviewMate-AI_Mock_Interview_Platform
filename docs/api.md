@@ -31,10 +31,10 @@ In the Express tables, **Login** means the `token` cookie is required. Browser c
 
 | Method | Path | Login | Purpose |
 |---|---|---|---|
-| POST | `/parser/parse` | Yes | Upload a PDF in the `file` field, parse it and save it. Optional `title`. |
-| GET | `/parser/all` | Yes | Your resumes |
-| POST | `/parser/create` | Yes | Create a resume. Owner, id and PDF link are set by the server. |
-| PUT | `/parser/update/:id` | Yes | Update the title and content of your resume |
+| POST | `/parser/parse` | Yes | Upload a PDF or `.tex` file in the `file` field, read it into sections and save it. Optional `title`. Returns `resume`, the import `report` and `resumeText` (plain text for the interview). |
+| GET | `/parser/all` | Yes | Your resumes. Resumes saved in the old fixed format are converted to sections. |
+| POST | `/parser/create` | Yes | Create a resume from `title`, `header`, `sections` and `layout`. Owner, id, PDF link and import report are set by the server. |
+| PUT | `/parser/update/:id` | Yes | Update any of `title`, `header`, `sections` and `layout`. Saving sections removes the old fixed fields. |
 | DELETE | `/parser/delete/:id` | Yes | Delete your resume |
 
 ## Job descriptions
