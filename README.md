@@ -131,50 +131,28 @@ git clone https://github.com/LekhNayak/InterviewMate-AI_Mock_Interview_Platform.
 cd interviewmate
 ```
 
-**2. Start the API.** Same commands in bash and PowerShell.
+**2. Install and copy the settings files.** The commands are the same in bash and PowerShell. `npm install` installs the frontend, the API and [Turborepo](https://turborepo.com), which runs them.
 
 ```bash
-cd backend
-npm ci
-cp exampleENV.txt .env
+npm install
+cp backend/exampleENV.txt backend/.env
+cp "models/Interview api_service/exampleENV.txt" "models/Interview api_service/.env"
+cp frontend/exampleENVLOCAL.txt frontend/.env.local
 ```
 
-Open `backend/.env` and set `MONGO_URI` (for example `mongodb://127.0.0.1:27017/interviewmate`), `SECRET_KEY` (any long random string), `GROQ_API_KEY` and the three `CLOUDINARY_` values. Then:
+Open `backend/.env` and set `MONGO_URI` (for example `mongodb://127.0.0.1:27017/interviewmate`), `SECRET_KEY` (any long random string), `GROQ_API_KEY` and the three `CLOUDINARY_` values. In `models/Interview api_service/.env`, set `GROQ_API_KEY` and `SARVAM_API_KEY`.
+
+**3. Set up the interview service and the demo account.** The first command makes the service a Python 3.11 environment and installs its packages.
 
 ```bash
-node seedDemoUser.js
-npm run dev
+npx turbo run setup --filter=interview-service
+npm run seed:demo -w backend
 ```
 
-**3. Start the interview service** in a second terminal, from the project folder. After the `cp` line, set `GROQ_API_KEY` and `SARVAM_API_KEY` in the new `.env`.
-
-macOS or Linux (bash):
+**4. Start everything.** The API, the interview service and the frontend start together, each with its own output.
 
 ```bash
-cd "models/Interview api_service"
-python3.11 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-cp exampleENV.txt .env
-.venv/bin/python interview_service.py
-```
-
-Windows (PowerShell):
-
-```powershell
-cd "models/Interview api_service"
-py -3.11 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-cp exampleENV.txt .env
-.venv\Scripts\python interview_service.py
-```
-
-**4. Start the frontend** in a third terminal, from the project folder. Same commands in bash and PowerShell.
-
-```bash
-cd frontend
-npm ci
-cp exampleENVLOCAL.txt .env.local
-npm run dev
+npm run dev:interview
 ```
 
 **5. Open <http://localhost:8080>.** Choose **Sign In** and click the **Demo Account** box. Under **Simulations**, use **Upload JD** to add a job description, then **Start Simulation**.

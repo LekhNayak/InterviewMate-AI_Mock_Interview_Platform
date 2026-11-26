@@ -111,6 +111,12 @@ Add this line:
 */10 * * * * /home/ubuntu/interviewmate/deploy/keepalive.sh >> /var/log/keepalive.log 2>&1
 ```
 
+## Vercel and the monorepo
+
+The repository is an npm workspace with one `package-lock.json` at the root, run with Turborepo. Each Vercel project keeps its own root directory (`backend` or `frontend`), and Vercel installs from the repository root by itself. Leave the install and build commands at their defaults.
+
+Optional: under **Settings → Git → Ignored Build Step**, enter `npx turbo-ignore`. A push then redeploys a project only when its own files, or its dependencies, changed.
+
 ## Vercel: the API
 
 Vercel runs the Express app in `backend/src/index.js` as one function. The file exports the app, and starts its own server only when run with `node`.
@@ -139,7 +145,7 @@ curl https://api.example.com/health
 
 It answers `{"server":"up","db":"connected"}`. `"disconnected"` means Atlas refused the connection: check `MONGO_URI` and the network access list.
 
-Create the demo account once, from your own computer. Put the production `MONGO_URI` and `DEMO_EMAIL` in `backend/.env`, then run `node seedDemoUser.js` in `backend`.
+Create the demo account once, from your own computer. Put the production `MONGO_URI` and `DEMO_EMAIL` in `backend/.env`, then run `npm run seed:demo -w backend` in the repository root.
 
 Vercel limits:
 
@@ -158,7 +164,7 @@ VITE_INTERVIEW_API=https://interview.example.com/api
 VITE_EMOTION_API=https://emotion.example.com/api
 ```
 
-They are built into the bundle, so redeploy after changing them. `vercel.json` sends every path to the app so that page reloads work.
+They are built into the bundle, so redeploy after changing them. `frontend/turbo.json` passes every `VITE_*` variable to the build; a variable with another prefix would not reach it. `vercel.json` sends every path to the app so that page reloads work.
 
 ## Update
 
@@ -176,6 +182,7 @@ cd deploy && docker compose up -d --build --remove-orphans
 - Interview sessions and feedback are JSON files in the `interview_data` volume, so a rebuild does not end an interview in progress. The question audio is inside the container and is lost on a rebuild. Saved interviews are in MongoDB.
 - The interview service stores sessions in JSON files, so run it with one worker.
 - The API signs a 5-minute token for each ATS request. The browser gets 3-hour tokens for the interview and emotion services.
+- To run the API in Docker yourself, build from the repository root: `docker build -f backend/Dockerfile .` The Dockerfile uses `turbo prune` to install only what the backend needs.
 
 ## Render
 

@@ -1,0 +1,23 @@
+{
+  "name": "interviewmate",
+  "private": true,
+  "packageManager": "npm@11.19.1",
+  "workspaces": [
+    "frontend",
+    "backend",
+    "models/Interview api_service",
+    "models/Resume ATS and JD/api_service",
+    "models/Audio_Emotion_Analysis"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=frontend --filter=backend",
+    "dev:interview": "turbo run dev --filter=frontend --filter=backend --filter=interview-service",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "setup:python": "turbo run setup --concurrency=1"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.13"
+  }
+}

@@ -5,3 +5,4 @@ exampleENV.txt
 # 60MB of source PDFs — only build_database.py needs these, and resume_db
 # is already built and committed.
 placed_resume/
+package.json

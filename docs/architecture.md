@@ -35,7 +35,12 @@ models/
   Audio_Emotion_Analysis/         Emotion service: three Keras models
 deploy/                           Docker Compose, Caddyfile and keep-alive script
 render.yaml                       Alternative Render deployment
+package.json, package-lock.json   npm workspace of the five packages, with one lockfile
+turbo.json                        Turborepo tasks: build and lint (cached), dev, setup
+scripts/python.mjs                Sets up and runs a Python service with its own .venv
 ```
+
+Each Python service has a small `package.json` with `setup` and `dev` scripts, so Turborepo runs it like the Node packages. The services still install with `pip` from their `requirements.txt`.
 
 The **Resume Building** tab is `DashboardContent/ResumeBuilder.tsx`. The dashboard calendar is built from saved interviews.
 

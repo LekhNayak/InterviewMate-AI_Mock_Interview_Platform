@@ -34,14 +34,50 @@ The API only accepts browser requests from `http://localhost:8080` and the produ
 | Find Jobs | Backend, frontend | RapidAPI |
 | Voice emotion in feedback | Emotion, with the mock interview services | None |
 
-## Express API
+## Install and run
 
-The commands are the same in bash and PowerShell.
+The repository is an npm workspace run with [Turborepo](https://turborepo.com). It has five packages:
+
+| Package | Folder |
+|---|---|
+| `frontend` | `frontend` |
+| `backend` | `backend` |
+| `interview-service` | `models/Interview api_service` |
+| `ats-service` | `models/Resume ATS and JD/api_service` |
+| `emotion-service` | `models/Audio_Emotion_Analysis` |
+
+Install the frontend, the API and Turborepo once, from the repository root. There is one `package-lock.json`, at the root.
 
 ```bash
-cd backend
-npm ci
-cp exampleENV.txt .env
+npm install
+```
+
+Then set up the Python services. Each gets its own `.venv`, made with Python 3.11, in its folder:
+
+```bash
+npm run setup:python
+```
+
+That installs TensorFlow and PyTorch, which are large. To set up one service, name its package: `npx turbo run setup --filter=interview-service`. [scripts/python.mjs](../scripts/python.mjs) does the work, the same way on Windows, macOS and Linux.
+
+Run these from the root. The commands are the same in bash and PowerShell.
+
+| Command | What it does |
+|---|---|
+| `npm run dev:web` | Starts the frontend and the API |
+| `npm run dev:interview` | Also starts the interview service, which mock interviews need |
+| `npm run dev` | Starts all five |
+| `npm run build` | Builds the frontend. Turborepo caches it, so an unchanged build takes a moment. |
+| `npm run lint` | Runs ESLint, also cached |
+
+While services run, Turborepo shows each one's output on its own. Choose one with the arrow keys; Ctrl+C stops them all. To run any mix, filter by package name: `npx turbo run dev --filter=backend --filter=ats-service`.
+
+A variable set in the shell reaches every service, and wins over the same variable in its `.env` file. Each folder also still works on its own: `npm run dev` inside it.
+
+## Express API
+
+```bash
+cp backend/exampleENV.txt backend/.env
 ```
 
 Edit `backend/.env`:
@@ -61,18 +97,17 @@ Edit `backend/.env`:
 | `SERVICE_TOKEN_SECRET` | Optional. See [Service tokens](#service-tokens). |
 | `NODE_ENV` | Leave unset locally. `production` makes the login cookie `Secure` and `SameSite=None`, which needs HTTPS. |
 
-Create the demo account, then start the server:
+Create the demo account:
 
 ```bash
-node seedDemoUser.js
-npm run dev
+npm run seed:demo -w backend
 ```
 
-`seedDemoUser.js` creates the account named by `DEMO_EMAIL`. It gets a random password unless you set `DEMO_PASSWORD`, and running it again resets the password. Visitors open it without one: the **Demo Account** box asks the server for a session. The demo account cannot be deleted and its password cannot be changed in the app.
+This runs `seedDemoUser.js`, which creates the account named by `DEMO_EMAIL`. It gets a random password unless you set `DEMO_PASSWORD`, and running it again resets the password. Visitors open it without one: the **Demo Account** box asks the server for a session. The demo account cannot be deleted and its password cannot be changed in the app.
 
-`seedSimulations.js` adds one public job description owned by the demo account.
+`npm run seed:simulations -w backend` adds one public job description owned by the demo account.
 
-Check the server:
+Start it with `npm run dev:web`, then check it:
 
 ```bash
 curl http://localhost:8000/health
@@ -82,29 +117,11 @@ It answers `{"server":"up","db":"connected"}`. If MongoDB is unreachable the ser
 
 ## Interview service
 
-macOS or Linux (bash):
-
 ```bash
-cd "models/Interview api_service"
-python3.11 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-cp exampleENV.txt .env
-.venv/bin/python interview_service.py
+cp "models/Interview api_service/exampleENV.txt" "models/Interview api_service/.env"
 ```
 
-Windows (PowerShell):
-
-```powershell
-cd "models/Interview api_service"
-py -3.11 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-cp exampleENV.txt .env
-.venv\Scripts\python interview_service.py
-```
-
-In Git Bash on Windows, use `py -3.11` to create the environment and `.venv/Scripts/python` to run it.
-
-Fill in `.env` before the last command:
+Fill in `.env`:
 
 | Variable | Value |
 |---|---|
@@ -117,11 +134,11 @@ Fill in `.env` before the last command:
 
 This service writes sessions to `data/*.json` and audio to `static/recordings/`. Both are gitignored.
 
-Running the file directly uses Flask's development server on all network interfaces. Use gunicorn on any shared or public network, as the Dockerfile does.
+`npm run dev` runs the file directly, which uses Flask's development server on all network interfaces. Use gunicorn on any shared or public network, as the Dockerfile does.
 
 ## ATS service
 
-Same steps in `models/Resume ATS and JD/api_service`. The last command runs `main.py`.
+Copy `exampleENV.txt` to `.env` in `models/Resume ATS and JD/api_service`. `npm run dev` runs `main.py`.
 
 | Variable | Value |
 |---|---|
@@ -136,25 +153,19 @@ The install includes PyTorch and is large. The first analysis downloads the `all
 
 ## Emotion service
 
-Same steps in `models/Audio_Emotion_Analysis`. The last command runs `main.py`. `.env` is optional and holds only `SERVICE_TOKEN_SECRET`. `PORT` is optional and defaults to `8090`.
+In `models/Audio_Emotion_Analysis`, `npm run dev` runs `main.py`. `.env` is optional and holds only `SERVICE_TOKEN_SECRET`. `PORT` is optional and defaults to `8090`.
 
-Run it from its own folder, because it loads the `.h5` models by relative path.
+It loads the `.h5` models by relative path, so it must run from its own folder. `npm run dev` does that.
 
 ## Frontend
 
 ```bash
-cd frontend
-npm ci
-cp exampleENVLOCAL.txt .env.local
+cp frontend/exampleENVLOCAL.txt frontend/.env.local
 ```
 
-The file sets `VITE_API_BASE_URL`, `VITE_INTERVIEW_API` and `VITE_EMOTION_API` to the local ports above.
+The file sets `VITE_API_BASE_URL`, `VITE_INTERVIEW_API` and `VITE_EMOTION_API` to the local ports above. Vite reads them when it starts, so restart it after a change.
 
-```bash
-npm run dev
-```
-
-Vite reads these values when it starts, so restart it after a change. `npm run build` makes a production build. `npm run lint` runs ESLint.
+`npm run build` uses `frontend/.env.production` instead, if that file exists. Turborepo passes `VITE_*` variables set in the shell to the build, as Vercel sets them; others do not reach it.
 
 ## Service tokens
 

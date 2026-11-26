@@ -127,3 +127,6 @@ models/Audio_Emotion_Analysis/audio/
 INTERVIEW_PREP.md
 models/Resume ATS and JD/api_service/placed_resume/
 models/Resume ATS and JD/api_service/resume_db/
+
+# Turborepo cache and task logs
+.turbo/

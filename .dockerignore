@@ -1,0 +1,18 @@
+# For images built with the repository root as context (backend/Dockerfile).
+# The Python services build from their own folders and have their own .dockerignore.
+.git
+**/node_modules
+**/.turbo
+**/dist
+**/.venv
+**/__pycache__
+**/.env
+**/.env.*
+**/tempUploads
+models/**/*.h5
+models/**/placed_resume
+models/**/resume_db
+models/**/audio
+models/**/data
+models/**/static/recordings
+docs/screenshots
