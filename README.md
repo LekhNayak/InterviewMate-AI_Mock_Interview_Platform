@@ -112,7 +112,7 @@ The browser then saves the transcript, feedback and averaged voice reading throu
 | Part | Built with |
 |---|---|
 | Frontend | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4, shadcn/ui, React Router 7, Recharts 3, Framer Motion 12 |
-| API | Express 5, Mongoose 8, JWT in an HTTP-only cookie, bcrypt, Multer 2, Nodemailer 7 |
+| API | Express 5, Mongoose 8, JWT in an HTTP-only cookie, bcrypt, Multer 2, Nodemailer 10 |
 | Interview service | Python 3.11, Flask, Groq (`qwen/qwen3.6-27b`, `whisper-large-v3-turbo`), Sarvam `bulbul:v3` |
 | ATS service | Flask, sentence-transformers (`all-MiniLM-L6-v2`), ChromaDB, Groq (`openai/gpt-oss-120b`) |
 | Emotion service | Flask, TensorFlow 2.20, librosa |
@@ -121,7 +121,7 @@ The browser then saves the transcript, feedback and averaged voice reading throu
 
 ## Quick start
 
-You need **Node.js 20.19+ or 22.12+**, **Python 3.11**, a **MongoDB** server, and keys for **Groq** and **Cloudinary**. A **Sarvam** key adds the interviewer's voice. This runs accounts, resumes and mock interviews. For the ATS Checker, job search and email sign-up, see [Setup](docs/setup.md).
+You need **Node.js 20.19+ or 22.13+**, **Python 3.11**, a **MongoDB** server, and keys for **Groq** and **Cloudinary**. A **Sarvam** key adds the interviewer's voice. This runs accounts, resumes and mock interviews. For the ATS Checker, job search and email sign-up, see [Setup](docs/setup.md).
 
 **1. Get the code.**
 

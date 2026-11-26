@@ -6,7 +6,7 @@ How to run every part of InterviewMate on your own machine. For the short versio
 
 | Tool | Version | Why |
 |---|---|---|
-| Node.js | 20.19 or later, or 22.12 or later | Required by Vite 7 and its React plugin. The backend image uses Node 20. |
+| Node.js | 20.19 or later, or 22.13 or later | Required by Vite 7 and the lint tools. The backend image uses Node 20. |
 | Python | 3.11 | Used by every Dockerfile and by `render.yaml`. The emotion service pins packages for it. |
 | MongoDB | Local server or Atlas | Tested locally with MongoDB 8.0. |
 

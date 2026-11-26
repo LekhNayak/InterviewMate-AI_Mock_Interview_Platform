@@ -37,9 +37,10 @@ const ResumeEditor: React.FC<Props> = ({ resume, onChange }) => {
         onChange({ ...resume, [key]: value });
     };
 
-    const autoResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        e.target.style.height = "auto";
-        e.target.style.height = e.target.scrollHeight + "px";
+    const autoResize = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+        const area = e.currentTarget;
+        area.style.height = "auto";
+        area.style.height = area.scrollHeight + "px";
     };
 
     return (

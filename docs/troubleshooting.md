@@ -7,7 +7,7 @@
 | Backend stops with `GROQ_API_KEY environment variable is missing or empty` | The Groq client is created at startup. Put any value in `backend/.env` to boot, and a real key to parse PDFs. |
 | `Database connection failed` | Check `MONGO_URI`. The server stays up and `/health` reports the database state. |
 | PowerShell says running scripts is disabled | Your execution policy blocks `npm.ps1` and venv activation. Use `npm.cmd` in place of `npm`, and run `.venv\Scripts\python` directly as the setup guide does. |
-| Vite fails on an old Node version | Use Node 20.19 or later, or 22.12 or later. |
+| Vite fails on an old Node version | Use Node 20.19 or later, or 22.13 or later. |
 | Emotion service cannot open `model3.h5` | Run it from `models/Audio_Emotion_Analysis`. |
 | Port 5000 is taken | Set another `PORT` for the interview service and update `VITE_INTERVIEW_API`. If `PORT` is missing from `backend/.env`, the backend uses 5000 too. |
 
