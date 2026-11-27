@@ -17,6 +17,9 @@ import ResumeEditor from "@/components/Resume/ResumeEditor";
 import ResumeList from "@/components/Resume/ResumeList";
 import ImportReportDialog from "@/components/Resume/ImportReportDialog";
 
+import { invalidate, queryKeys, resumesQuery } from "@/lib/queries";
+import { queryClient } from "@/lib/queryClient";
+
 const API = import.meta.env.VITE_API_BASE_URL;
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // the API's limit
 
@@ -28,6 +31,8 @@ const api = async (path: string, init: RequestInit = {}) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.success === false) throw new Error(data.error || data.message || `Request failed (${res.status})`);
+    // Saves, uploads, renames and deletes change the list other screens show.
+    if (init.method && init.method !== "GET") invalidate(queryKeys.resumes);
     return data;
 };
 
@@ -79,9 +84,10 @@ export default function ResumeBuilder() {
     };
 
     useEffect(() => {
-        api("/parser/all")
-            .then((data) => {
-                const list: Resume[] = (data.resumes || []).map(normalizeResume);
+        queryClient
+            .fetchQuery(resumesQuery)
+            .then((stored) => {
+                const list: Resume[] = stored.map(normalizeResume);
                 if (!list.length) {
                     addDraft();
                     return;

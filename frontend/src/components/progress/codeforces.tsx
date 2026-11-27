@@ -1,5 +1,6 @@
 import { SquareArrowOutUpRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useCodeforces } from "@/lib/queries";
 import {
     BarChart,
     Bar,
@@ -45,9 +46,6 @@ const RatingTooltip = ({ active, payload }: ChartTooltipProps) => {
 };
 
 export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: string }) {
-    const [data, setData] = useState<CodeforcesUser | null>(null);
-    const [ratingHistory, setRatingHistory] = useState<RatingChange[]>([]);
-    const [failed, setFailed] = useState(false);
 
 
     const username = useMemo(() => {
@@ -56,31 +54,9 @@ export default function CodeforcesCard({ codeforcesLink }: { codeforcesLink: str
         return clean.split("/profile/")[1] || "";
     }, [codeforcesLink]);
 
-    useEffect(() => {
-        if (!username) return; // ⛔ Prevent early fetch when link is empty
-
-        async function fetchData() {
-            try {
-                const infoRes = await fetch(`https://codeforces.com/api/user.info?handles=${username}`);
-                const info = await infoRes.json();
-
-                const histRes = await fetch(`https://codeforces.com/api/user.rating?handle=${username}`);
-                const histData = await histRes.json();
-
-                if (info.status === "OK" && histData.status === "OK") {
-                    setData(info.result[0]);
-                    setRatingHistory(histData.result.slice(-8));
-                } else {
-                    setFailed(true);
-                }
-            } catch (err) {
-                console.error("Error fetching Codeforces data:", err);
-                setFailed(true);
-            }
-        }
-
-        fetchData();
-    }, [username]);
+    const { data: result, isError: failed } = useCodeforces<CodeforcesUser, RatingChange>(username);
+    const data = result?.user ?? null;
+    const ratingHistory = result?.history ?? [];
 
 
     if (!data || !ratingHistory.length) {

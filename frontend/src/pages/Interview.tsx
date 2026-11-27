@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { summarizeEmotions } from "@/lib/emotion";
 import { errorMessage } from "@/lib/errors";
 import { serviceAuthHeaders } from "@/lib/serviceToken";
+import { invalidate, queryKeys } from "@/lib/queries";
 import type { EmotionResult, EmotionSummary } from "@/types";
 
 
@@ -586,6 +587,7 @@ export default function WebinarUI() {
                 }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            invalidate(queryKeys.interviews);
         } catch (err) {
             console.error("Failed to save interview session:", err);
             toast.error("The interview could not be saved to Reviews.");

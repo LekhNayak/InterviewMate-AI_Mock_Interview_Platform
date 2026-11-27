@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useProfile } from "@/lib/queries";
 import { toast } from "sonner";
 import {
   Briefcase, Loader2, MapPin, Building2,
@@ -23,10 +24,10 @@ export default function JobFinder() {
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [role, setRole] = useState("");
   const [location, setLocation] = useState("");
-  const [skills, setSkills] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [loadingSkills, setLoadingSkills] = useState(true);
+  const { data: profile, isLoading: loadingSkills, isError: profileFailed } = useProfile();
+  const skills = profile?.skills ?? [];
   const [page, setPage] = useState(1);
   const [apiPage, setApiPage] = useState(1);
   const [hasSearched, setHasSearched] = useState(false);
@@ -37,20 +38,8 @@ export default function JobFinder() {
   const isLastLocalPage = page >= totalPages;
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch(`${API}/user/profile`, { credentials: "include" });
-        const data = await res.json();
-        if (res.ok) setSkills(data.user.skills || []);
-        else toast.error("Failed to load profile");
-      } catch {
-        toast.error("Error loading user");
-      } finally {
-        setLoadingSkills(false);
-      }
-    };
-    fetchUser();
-  }, []);
+    if (profileFailed) toast.error("Failed to load profile");
+  }, [profileFailed]);
 
   const requestBatch = async (targetApiPage: number) => {
     const res = await fetch(`${API}/jobs/search`, {

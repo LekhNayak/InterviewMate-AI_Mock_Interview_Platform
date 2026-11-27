@@ -1,45 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { SquareArrowOutUpRight } from "lucide-react";
 import LeetCodeSegmentCircle from "./progressbar";
-
-interface LeetCodeStats {
-    totalSolved: number;
-    ranking: number;
-    easySolved: number;
-    totalEasy: number;
-    mediumSolved: number;
-    totalMedium: number;
-    hardSolved: number;
-    totalHard: number;
-    submissionCalendar?: Record<string, number>;
-}
+import { useLeetCode } from "@/lib/queries";
 
 export default function LeetCodeCard({ leetcodeLink }: { leetcodeLink: string }) {
-    const [stats, setStats] = useState<LeetCodeStats | null>(null);
-    const [loading, setLoading] = useState(false);
-
     const username = useMemo(() => {
         const x = leetcodeLink.trim().replace(/\/+$/, "");
         return x.split("/u/")[1];
     }, [leetcodeLink]);
 
-    useEffect(() => {
-        if (!username) return;
-        const fetchLC = async () => {
-            setLoading(true);
-            try {
-                const res = await fetch(`https://leetcode-api-faisalshohag.vercel.app/${username}`);
-                const data = await res.json();
-                // The API answers 200 with an error list for unknown users.
-                setStats(typeof data.totalSolved === "number" ? data : null);
-            } catch (err) {
-                console.error("Error fetching LeetCode data:", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchLC();
-    }, [username]);
+    const { data, isLoading: loading } = useLeetCode(username);
+    const stats = data ?? null;
 
     const streak = useMemo(() => {
         const cal = stats?.submissionCalendar || {};

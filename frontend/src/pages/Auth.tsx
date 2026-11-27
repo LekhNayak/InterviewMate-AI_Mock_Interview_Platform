@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { Sparkles, ArrowLeft } from "lucide-react";
 import { errorMessage } from "@/lib/errors";
+import { clearCache } from "@/lib/queries";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -55,6 +56,7 @@ const Auth = () => {
             const response = await fetch(`${BASE_URL}/user/demo-login`, { method: "POST", credentials: "include" });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || "Demo sign in failed");
+            clearCache();
             navigate("/dashboard");
         } catch (err) {
             toast.error(errorMessage(err, "Something went wrong"));
@@ -86,6 +88,7 @@ const Auth = () => {
             if (!response.ok) throw new Error(data.message || "Login failed");
 
             toast.success("Login successful 🎉");
+            clearCache();
             navigate("/dashboard");
         } catch (err) {
             toast.error(errorMessage(err, "Something went wrong"));

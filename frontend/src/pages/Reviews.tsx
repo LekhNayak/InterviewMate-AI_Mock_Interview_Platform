@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useInterviews } from "@/lib/queries";
 import { useNavigate } from "react-router-dom";
 import {
     ArrowLeft, Calendar, ChevronDown, ChevronUp,
@@ -9,7 +10,6 @@ import Sidebar from "@/components/Sidebar";
 import TopNav from "@/components/DashboardContent/TopNav";
 import type { EmotionSummary } from "@/types";
 
-const API = import.meta.env.VITE_API_BASE_URL;
 
 interface TranscriptEntry { question: string; answer: string; }
 
@@ -75,21 +75,14 @@ const TYPE_COLORS: Record<string, string> = {
 
 export default function Reviews() {
     const navigate = useNavigate();
-    const [interviews, setInterviews] = useState<Interview[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data, isLoading: loading, isError } = useInterviews<Interview>();
+    const interviews = data ?? [];
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [tab, setTab] = useState<"feedback" | "transcript">("feedback");
 
     useEffect(() => {
-        fetch(`${API}/interview/user`, { credentials: "include" })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) setInterviews(data.interviews);
-                else toast.error("Failed to load interview history");
-            })
-            .catch(() => toast.error("Network error loading interviews"))
-            .finally(() => setLoading(false));
-    }, []);
+        if (isError) toast.error("Failed to load interview history");
+    }, [isError]);
 
     const toggle = (id: string) => {
         setExpandedId(prev => prev === id ? null : id);

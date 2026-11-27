@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { invalidate, queryKeys, useJds } from "@/lib/queries";
+import { queryClient } from "@/lib/queryClient";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { FolderOpen, MessageSquareText, Upload } from "lucide-react";
@@ -10,7 +12,6 @@ import InterviewSetup from "@/components/simulations/InterviewSetup";
 import UploadJdDialog from "@/components/simulations/UploadJdDialog";
 import type { WorkMode } from "@/components/simulations/workModes";
 
-const API = import.meta.env.VITE_API_BASE_URL;
 
 interface SimulationsProps {
     search: string;
@@ -26,20 +27,15 @@ const linkButton =
  */
 export default function Simulations({ search, setSearch }: SimulationsProps) {
     const fillRef = useFillViewport<HTMLDivElement>();
-    const [jobs, setJobs] = useState<JobDescription[] | null>(null);
+    const { data, isError } = useJds<JobDescription>();
+    const jobs = isError ? [] : data ?? null;
     const [mode, setMode] = useState<WorkMode>("All");
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [uploadOpen, setUploadOpen] = useState(false);
 
     useEffect(() => {
-        fetch(`${API}/jd/`, { credentials: "include" })
-            .then((res) => res.json())
-            .then((data) => setJobs(data.jobs || []))
-            .catch(() => {
-                toast.error("Could not load the job descriptions");
-                setJobs([]);
-            });
-    }, []);
+        if (isError) toast.error("Could not load the job descriptions");
+    }, [isError]);
 
     const query = search.trim().toLowerCase();
     const filtered = (jobs ?? []).filter(
@@ -89,7 +85,8 @@ export default function Simulations({ search, setSearch }: SimulationsProps) {
                 open={uploadOpen}
                 onOpenChange={setUploadOpen}
                 onUploaded={(job) => {
-                    setJobs((prev) => [job, ...(prev ?? [])]);
+                    queryClient.setQueryData<JobDescription[]>(queryKeys.jds, (prev) => [job, ...(prev ?? [])]);
+                    invalidate(queryKeys.myJds);
                     setSearch("");
                     setMode("All");
                     setSelectedId(job._id);

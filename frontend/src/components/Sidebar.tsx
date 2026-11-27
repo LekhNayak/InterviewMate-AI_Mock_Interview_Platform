@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 const API = import.meta.env.VITE_API_BASE_URL;
 import {
     LayoutDashboard,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { clearServiceToken } from "@/lib/serviceToken";
+import { clearCache, useProfile } from "@/lib/queries";
 import type { User } from "@/types";
 
 interface SidebarProps {
@@ -22,29 +23,17 @@ interface SidebarProps {
 export default function Sidebar({ activeMenu, setActiveMenu }: SidebarProps) {
     const [expanded, setExpanded] = useState(true);
     const [showLogout, setShowLogout] = useState(false);
-    const [mongoUser, setMongoUser] = useState<User | null>(null);
     const navigate = useNavigate();
-
-
-    useEffect(() => {
-        const fetchUser = async () => {
-            try {
-                const res = await fetch(`${API}/user/profile`, { credentials: "include" });
-                const data = await res.json();
-                if (res.ok && data.user) {
-                    setMongoUser(data.user);
-                    localStorage.setItem("user", JSON.stringify(data.user));
-                } else {
-                    const stored = localStorage.getItem("user");
-                    if (stored) setMongoUser(JSON.parse(stored));
-                }
-            } catch {
-                const stored = localStorage.getItem("user");
-                if (stored) setMongoUser(JSON.parse(stored));
-            }
-        };
-        fetchUser();
-    }, []);
+    const { data: profile } = useProfile();
+    // Until the profile loads (or if it fails), show the copy saved at the last load.
+    const [storedUser] = useState<User | null>(() => {
+        try {
+            return JSON.parse(localStorage.getItem("user") || "null");
+        } catch {
+            return null;
+        }
+    });
+    const mongoUser = profile ?? storedUser;
 
     const handleLogout = async () => {
         try {
@@ -54,6 +43,7 @@ export default function Sidebar({ activeMenu, setActiveMenu }: SidebarProps) {
             console.error("Logout request failed:", err);
         }
         clearServiceToken();
+        clearCache();
         localStorage.removeItem("user");
 
         navigate("/auth");

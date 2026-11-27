@@ -10,9 +10,11 @@ import InterviewCalendar from "../profile/interviewcalender";
 import CodeforcesCard from "../progress/codeforces";
 import LeetCodeCard from "../progress/leetcode";
 import type { User } from "@/types";
+import { setCachedProfile, useProfile } from "@/lib/queries";
 
 export default function DashboardHome() {
-    const [mongoUser, setMongoUser] = useState<User | null>(null);
+    const { data: profile } = useProfile();
+    const mongoUser = profile ?? null;
     const [editMode, setEditMode] = useState(false);
     const [profileForm, setProfileForm] = useState({
         name: "",
@@ -26,42 +28,23 @@ export default function DashboardHome() {
         skills: "",
         interests: "",
     });
-    // Local user data
+    // Fill the edit form from the cached profile whenever it changes, but never
+    // while the user is editing; leaving edit mode resets it to the saved values.
     useEffect(() => {
-        const fetchProfile = async () => {
-            try {
-                const res = await fetch(`${API}/user/profile`, {
-                    method: "GET",
-                    credentials: "include"
-                });
-
-                const data = await res.json();
-                if (!data.success) {
-                    console.log("User not logged in or no profile");
-                    return;
-                }
-                setMongoUser(data.user);
-
-                setProfileForm({
-                    name: data.user.name || "",
-                    email: data.user.email || "",
-                    age: data.user.age || "",
-                    gender: data.user.gender || "",
-                    githubUrl: data.user.githubUrl || "",
-                    linkedinUrl: data.user.linkedinUrl || "",
-                    codeforcesUrl: data.user.codeforcesUrl || "",
-                    leetcodeUrl: data.user.leetcodeUrl || "",
-                    skills: (data.user.skills || []).join(", "),
-                    interests: (data.user.interests || []).join(", ")
-                });
-
-            } catch (err) {
-                console.error("Failed to fetch profile:", err);
-            }
-        };
-
-        fetchProfile();
-    }, []);
+        if (!profile || editMode) return;
+        setProfileForm({
+            name: profile.name || "",
+            email: profile.email || "",
+            age: profile.age ? String(profile.age) : "",
+            gender: profile.gender || "",
+            githubUrl: profile.githubUrl || "",
+            linkedinUrl: profile.linkedinUrl || "",
+            codeforcesUrl: profile.codeforcesUrl || "",
+            leetcodeUrl: profile.leetcodeUrl || "",
+            skills: (profile.skills || []).join(", "),
+            interests: (profile.interests || []).join(", ")
+        });
+    }, [profile, editMode]);
 
 
     const handleChange = (field: string, value: string) => {
@@ -95,8 +78,7 @@ export default function DashboardHome() {
             }
 
             const updatedUser: User = data.user;
-            setMongoUser(updatedUser);
-            localStorage.setItem("user", JSON.stringify(updatedUser));
+            setCachedProfile(updatedUser);
             setEditMode(false);
             toast.success("Profile updated successfully");
         } catch {

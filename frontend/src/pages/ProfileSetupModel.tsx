@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/errors";
+import { invalidate, queryKeys } from "@/lib/queries";
 import type { ResumeSection } from "@/types";
 
 interface Props {
@@ -71,6 +72,7 @@ const ProfileSetupModal = ({ open, onClose, onComplete }: Props) => {
 
             const updated = await updateRes.json();
             if (!updateRes.ok) throw new Error(updated.message || "The profile could not be saved");
+            invalidate(queryKeys.profile, queryKeys.resumes);
 
             toast.success("Profile completed successfully");
             onClose();

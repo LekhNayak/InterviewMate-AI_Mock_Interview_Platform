@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useMyJds, useResumes } from "@/lib/queries";
 import { toast } from "sonner";
 import {
     Briefcase, FileText, Loader2, ChevronDown,
@@ -79,20 +80,14 @@ function SelectField({ label, value, onChange, children, hint }: {
 
 export default function ATSChecker() {
     const [mode, setMode] = useState<Mode>("quick");
-    const [resumes, setResumes] = useState<Resume[]>([]);
-    const [jds, setJds] = useState<JD[]>([]);
+    const resumes = (useResumes().data ?? []) as Resume[];
+    const jds = useMyJds<JD>().data ?? [];
     const [resumeId, setResumeId] = useState("");
     const [jobRole, setJobRole] = useState("");
     const [jdId, setJdId] = useState("");
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<ATSResult | null>(null);
 
-    useEffect(() => {
-        fetch(`${API}/parser/all`, { credentials: "include" })
-            .then(r => r.json()).then(d => { if (d.success) setResumes(d.resumes); });
-        fetch(`${API}/jd/user`, { credentials: "include" })
-            .then(r => r.json()).then(d => { if (d.success) setJds(d.jobs); });
-    }, []);
 
     const handleAnalyze = async () => {
         if (!resumeId) return toast.error("Please select a resume.");

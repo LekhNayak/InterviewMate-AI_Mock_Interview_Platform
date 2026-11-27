@@ -1,4 +1,5 @@
-import { useRef, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
+import { useInterviews } from "@/lib/queries";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface MonthData {
@@ -11,7 +12,6 @@ interface MonthData {
 // 1 -> first color
 // 2 -> second color
 // 3+ -> third color
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const colors: Record<number, string> = {
     0: "#f5f5f5",
@@ -49,45 +49,23 @@ function generateMonth(year: number, month: number): MonthData {
 }
 
 export default function InterviewCalendar({ userId }: { userId: string }) {
-    const [occurrences, setOccurrences] = useState<Record<string, number>>({});
-    const [months, setMonths] = useState<MonthData[]>([]);
     const [current, setCurrent] = useState(new Date().getMonth());
-    const fetched = useRef(false);
+    const { data: interviews } = useInterviews<{ createdAt: string }>();
 
-    useEffect(() => {
-        if (!userId || fetched.current) return;
-        fetched.current = true;
+    const occurrences = useMemo(() => {
+        const counts: Record<string, number> = {};
+        (userId ? interviews ?? [] : []).forEach((i) => {
+            const date = normalizeDate(i.createdAt);
+            if (!date) return;
+            counts[date] = (counts[date] || 0) + 1;
+        });
+        return counts;
+    }, [interviews, userId]);
 
-        const fetchInterviews = async () => {
-            try {
-                const res = await fetch(`${BASE_URL}/interview/user`, {
-                    method: "GET",
-                    credentials: "include", // this ensures cookies are sent
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                });
-                const data = await res.json();
-                if (data.success) {
-                    const counts: Record<string, number> = {};
-                    data.interviews.forEach((i: { createdAt: string }) => {
-                        const date = normalizeDate(i.createdAt);
-                        if (!date) return;
-                        counts[date] = (counts[date] || 0) + 1;
-                    });
-                    setOccurrences(counts);
-                }
-            } catch (err) {
-                console.error("Error fetching interviews:", err);
-            }
-        };
-
-        fetchInterviews();
-
+    const months = useMemo<MonthData[]>(() => {
         const year = new Date().getFullYear();
-        const allMonths = Array.from({ length: 12 }, (_, i) => generateMonth(year, i));
-        setMonths(allMonths);
-    }, [userId]);
+        return Array.from({ length: 12 }, (_, i) => generateMonth(year, i));
+    }, []);
 
     if (!months.length) return <div>Loading...</div>;
 

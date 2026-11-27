@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { invalidate, queryKeys, useResumes } from "@/lib/queries";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ArrowRight, FileUp, Loader2 } from "lucide-react";
@@ -53,7 +54,11 @@ export default function InterviewSetup({ job }: { job: JobDescription | null }) 
     const navigate = useNavigate();
     const resumeId = useId();
     const [settings, setSettings] = useState<Settings>(loadSettings);
-    const [resumes, setResumes] = useState<Resume[] | null>(null);
+    const { data: rawResumes, isError: resumesFailed } = useResumes();
+    const resumes = useMemo<Resume[] | null>(
+        () => (resumesFailed ? [] : rawResumes ? rawResumes.map(normalizeResume).filter((r: Resume) => isSaved(r._id)) : null),
+        [rawResumes, resumesFailed]
+    );
     const [choice, setChoice] = useState<string>(UPLOAD);
     const [file, setFile] = useState<File | null>(null);
     const [starting, setStarting] = useState<"" | "reading" | "starting">("");
@@ -66,16 +71,13 @@ export default function InterviewSetup({ job }: { job: JobDescription | null }) 
         }
     }, [settings]);
 
+    // Preselect the first saved resume once the list is known.
+    const preselected = useRef(false);
     useEffect(() => {
-        fetch(`${API}/parser/all`, { credentials: "include" })
-            .then((res) => res.json())
-            .then((data) => {
-                const list: Resume[] = (data.resumes || []).map(normalizeResume).filter((r: Resume) => isSaved(r._id));
-                setResumes(list);
-                if (list.length) setChoice(list[0]._id!);
-            })
-            .catch(() => setResumes([]));
-    }, []);
+        if (preselected.current || !resumes) return;
+        preselected.current = true;
+        if (resumes.length) setChoice(resumes[0]._id!);
+    }, [resumes]);
 
     const set = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
     const length = LENGTHS.find((l) => l.value === settings.length) ?? LENGTHS[2];
@@ -97,6 +99,7 @@ export default function InterviewSetup({ job }: { job: JobDescription | null }) 
                 if (!res.ok || !data.success) throw new Error(data.error || "The resume could not be read");
                 resumeText = data.resumeText;
                 savedId = data.resume?._id;
+                invalidate(queryKeys.resumes);
             } else {
                 const resume = resumes?.find((r) => r._id === choice);
                 if (!resume) throw new Error("Choose a resume");

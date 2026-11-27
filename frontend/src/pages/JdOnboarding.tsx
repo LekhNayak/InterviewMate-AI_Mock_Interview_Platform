@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import Sidebar from "@/components/Sidebar";
 import TopNav from "@/components/DashboardContent/TopNav";
 import { jdToText } from "@/lib/jd";
+import { invalidate, queryKeys, useMyJds } from "@/lib/queries";
+import { queryClient } from "@/lib/queryClient";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
@@ -22,8 +24,8 @@ interface JD {
 
 export default function JdOnboarding() {
     const navigate = useNavigate();
-    const [jds, setJds] = useState<JD[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data, isLoading: loading, isError } = useMyJds<JD>();
+    const jds = data ?? [];
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
     // Simulation modal state
@@ -35,15 +37,8 @@ export default function JdOnboarding() {
     const [starting, setStarting] = useState(false);
 
     useEffect(() => {
-        fetch(`${API}/jd/user`, { credentials: "include" })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) setJds(data.jobs);
-                else toast.error("Failed to load your JDs");
-            })
-            .catch(() => toast.error("Network error loading JDs"))
-            .finally(() => setLoading(false));
-    }, []);
+        if (isError) toast.error("Failed to load your JDs");
+    }, [isError]);
 
     const handleDelete = async (id: string) => {
         setDeletingId(id);
@@ -51,7 +46,8 @@ export default function JdOnboarding() {
             const res = await fetch(`${API}/jd/${id}`, { method: "DELETE", credentials: "include" });
             const data = await res.json();
             if (data.success) {
-                setJds(prev => prev.filter(j => j._id !== id));
+                queryClient.setQueryData<JD[]>(queryKeys.myJds, prev => (prev ?? []).filter(j => j._id !== id));
+                invalidate(queryKeys.jds);
                 toast.success("JD deleted");
             } else toast.error(data.error || "Failed to delete JD");
         } catch {
@@ -86,6 +82,7 @@ export default function JdOnboarding() {
             });
             const data = await res.json();
             if (!data.success) return toast.error("Failed to parse resume: " + (data.error || "Unknown error"));
+            invalidate(queryKeys.resumes);
 
             const jdText = jdToText(modalJd);
 
