@@ -122,7 +122,7 @@ The browser then saves the transcript, feedback and averaged voice reading throu
 
 ## Quick start
 
-You need **Node.js 20.19+ or 22.13+**, **Python 3.11**, a **MongoDB** server, and keys for **Groq** and **Cloudinary**. A **Sarvam** key adds the interviewer's voice. This runs accounts, resumes and mock interviews. For the ATS Checker, job search and email sign-up, see [Setup](docs/setup.md).
+You need **Node.js 20.19+ or 22.13++**, **Python 3.11**, a **MongoDB** server, and keys for **Groq** and **Cloudinary**. A **Sarvam** key adds the interviewer's voice. This runs accounts, resumes and mock interviews. For the ATS Checker, job search and email sign-up, see [Setup](docs/setup.md).
 
 **1. Get the code.**
 
