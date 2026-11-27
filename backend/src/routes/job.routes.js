@@ -38,8 +38,20 @@ router.post("/search", userAuth, async (req, res) => {
                     "x-rapidapi-host":
                         "fresh-linkedin-scraper-api.p.rapidapi.com",
                 },
+                timeout: 30000,
             }
         );
+
+        // The provider reports its own failures (for example LinkedIn rate-limiting
+        // its scraper) as HTTP 2xx with success: false. Treating that as "no jobs"
+        // would hide the problem, so pass it on as an error the page can show.
+        if (response.data?.success === false) {
+            console.error("Job search provider failed:", response.data.message);
+            return res.status(503).json({
+                success: false,
+                message: "The job search service is busy right now. Try again in a few minutes.",
+            });
+        }
 
         const jobs = response.data?.data || [];
 
@@ -84,11 +96,14 @@ router.post("/search", userAuth, async (req, res) => {
         res.json({ success: true, jobs: filtered, fetched: jobs.length });
 
     } catch (err) {
-        console.error(err.response?.data || err.message);
-        res.status(500).json({
-            success: false,
-            message: "Job fetch failed",
-        });
+        console.error("Job search failed:", err.response?.status, err.response?.data || err.message);
+        const status = err.response?.status;
+        const message =
+            status === 429 ? "The monthly job search limit has been reached. Try again later."
+            : status === 401 || status === 403 ? "Job search is not set up: the RapidAPI key is missing or invalid."
+            : err.code === "ECONNABORTED" ? "The job search service took too long to answer. Try again."
+            : "Job fetch failed";
+        res.status(status === 429 ? 429 : 502).json({ success: false, message });
     }
 });
 
