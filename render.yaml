@@ -25,7 +25,7 @@ services:
         sync: false
       - key: EMAIL_PASS
         sync: false
-      - key: RAPIDAPI_KEY
+      - key: SERPAPI_KEY
         sync: false
       # Full URL (with https://) of the interviewmate-ats-service below, e.g.
       # https://interviewmate-ats-service.onrender.com — fill in after its first deploy.

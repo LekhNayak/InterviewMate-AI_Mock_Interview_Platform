@@ -8,7 +8,6 @@ import {
 
 const API = import.meta.env.VITE_API_BASE_URL;
 const JOBS_PER_PAGE = 8;
-const MAX_BATCHES = 3;
 
 interface Job {
   title: string;
@@ -18,6 +17,7 @@ interface Job {
   url: string;
   matchScore?: number;
   matchedSkills?: string[];
+  source?: string;
 }
 
 export default function JobFinder() {
@@ -29,9 +29,11 @@ export default function JobFinder() {
   const { data: profile, isLoading: loadingSkills, isError: profileFailed } = useProfile();
   const skills = profile?.skills ?? [];
   const [page, setPage] = useState(1);
-  const [apiPage, setApiPage] = useState(1);
   const [hasSearched, setHasSearched] = useState(false);
-  const [noMoreFromApi, setNoMoreFromApi] = useState(false);
+  // The server's cursor for the next batch, and the search it belongs to.
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [searched, setSearched] = useState({ role: "", location: "" });
+  const noMoreFromApi = !nextCursor;
 
   const totalPages = Math.ceil(allJobs.length / JOBS_PER_PAGE);
   const jobs = allJobs.slice((page - 1) * JOBS_PER_PAGE, page * JOBS_PER_PAGE);
@@ -41,49 +43,31 @@ export default function JobFinder() {
     if (profileFailed) toast.error("Failed to load profile");
   }, [profileFailed]);
 
-  const requestBatch = async (targetApiPage: number) => {
+  const requestBatch = async (query: { role: string; location: string }, cursor: string | null) => {
     const res = await fetch(`${API}/jobs/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ role, location, apiPage: targetApiPage }),
+      body: JSON.stringify({ ...query, cursor }),
     });
 
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.message || "Failed to fetch jobs");
-    const jobs: Job[] = data.jobs;
-    return { jobs, fetched: (data.fetched as number | undefined) ?? jobs.length };
-  };
-
-  // The location filter can empty a batch while later ones still have matches,
-  // so read a few batches before giving up.
-  const loadJobs = async (firstApiPage: number, append: boolean) => {
-    let found: Job[] = [];
-    let exhausted = false;
-    let lastApiPage = firstApiPage - 1;
-
-    while (!found.length && !exhausted && lastApiPage < firstApiPage - 1 + MAX_BATCHES) {
-      lastApiPage += 1;
-      const batch = await requestBatch(lastApiPage);
-      found = batch.jobs;
-      exhausted = batch.fetched === 0;
-    }
-
-    setAllJobs((prev) => (append ? [...prev, ...found] : found));
-    setApiPage(lastApiPage);
-    setNoMoreFromApi(exhausted);
-    return found.length;
+    return { jobs: data.jobs as Job[], nextCursor: (data.nextCursor as string | null) ?? null };
   };
 
   const handleSearch = async () => {
     if (!role.trim()) return toast.error("Enter a role");
     setLoading(true);
     setPage(1);
-    setNoMoreFromApi(false);
+    const query = { role: role.trim(), location: location.trim() };
     try {
-      const count = await loadJobs(1, false);
+      const batch = await requestBatch(query, null);
+      setAllJobs(batch.jobs);
+      setNextCursor(batch.nextCursor);
+      setSearched(query);
       setHasSearched(true);
-      toast.success(`Found ${count} jobs`);
+      toast.success(`Found ${batch.jobs.length} jobs`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Server error");
     } finally {
@@ -100,7 +84,11 @@ export default function JobFinder() {
     if (noMoreFromApi) return;
     setLoadingMore(true);
     try {
-      const count = await loadJobs(apiPage + 1, true);
+      // "Load more" continues the search that was run, even if the inputs changed since.
+      const batch = await requestBatch(searched, nextCursor);
+      setAllJobs((prev) => [...prev, ...batch.jobs]);
+      setNextCursor(batch.nextCursor);
+      const count = batch.jobs.length;
       // The last page may have had room left, then the new jobs already fill it.
       if (count > 0) setPage((p) => (allJobs.length % JOBS_PER_PAGE === 0 ? p + 1 : p));
       else toast.info("No more jobs found");
@@ -265,6 +253,19 @@ export default function JobFinder() {
                   >
                     View Job →
                   </a>
+                  {job.source && (
+                    <p className="text-[11px] text-gray-400">
+                      {/* Himalayas' terms ask for a visible link back to them. */}
+                      via{" "}
+                      {job.source === "Himalayas" ? (
+                        <a href="https://himalayas.app" target="_blank" rel="noreferrer" className="underline hover:text-gray-600">
+                          Himalayas
+                        </a>
+                      ) : (
+                        job.source
+                      )}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

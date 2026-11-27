@@ -160,7 +160,8 @@ Vercel runs the Express app in `backend/src/index.js` as one function. The file 
 | `GROQ_API_KEY`, `GROQ_MODEL` | Groq key and `openai/gpt-oss-120b` |
 | `GROQ_API_KEY_2`, `_3`, ... | Optional backup Groq keys |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary account |
-| `EMAIL_USER`, `EMAIL_PASS`, `RAPIDAPI_KEY` | Gmail sign-up email and job search |
+| `EMAIL_USER`, `EMAIL_PASS` | Gmail sign-up email |
+| `SERPAPI_KEY` | SerpApi key for Find Jobs |
 | `DEMO_EMAIL` | Account opened by the demo button. Leave empty to hide it. |
 
 4. Under **Domains**, add `interview-backend.lekh.online` and create the DNS record that Vercel shows.

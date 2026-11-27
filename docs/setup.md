@@ -31,7 +31,7 @@ The API only accepts browser requests from `http://localhost:8080` and the produ
 | Upload a resume or job description | Backend, frontend | Groq, Cloudinary |
 | Mock interview | Backend, frontend, interview | Groq, Cloudinary. Sarvam for the spoken voice. |
 | ATS Checker | Backend, frontend, ATS | Groq, Cloudinary |
-| Find Jobs | Backend, frontend | RapidAPI |
+| Find Jobs | Backend, frontend | SerpApi key, or nothing for remote jobs only (Himalayas) |
 | Voice emotion in feedback | Emotion, with the mock interview services | None |
 
 ## Install and run
@@ -90,7 +90,7 @@ Edit `backend/.env`:
 | `GROQ_API_KEY` | Groq key. Used to turn resume and JD PDFs into fields. |
 | `GROQ_API_KEY_2`, `_3`, ... | Optional backup keys. See [Several Groq keys](#several-groq-keys). |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` |
-| `RAPIDAPI_KEY` | Key for the Fresh LinkedIn Scraper API on RapidAPI |
+| `SERPAPI_KEY` | Key for Find Jobs. See [Job search](job-search.md). |
 | `EMAIL_USER`, `EMAIL_PASS` | Gmail address and app password. The mailer uses Gmail only. |
 | `ML_SERVER` | `http://localhost:6050` |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary account that stores the PDFs |

@@ -52,5 +52,5 @@
 | `Analysis failed` in the ATS Checker | Check that the ATS service is running and that `ML_SERVER` is `http://localhost:6050`. Port 5000 is the interview service. |
 | The first analysis times out | The embedding model downloads on first use and the backend waits 60 seconds. Try again. |
 | JD Match shows `N/A` | The Groq call in the ATS service failed. Check its `GROQ_API_KEY` and any backup keys. |
-| `Job fetch failed` | Check `RAPIDAPI_KEY` and your RapidAPI quota. |
+| Find Jobs shows only remote jobs "via Himalayas" | SerpApi failed or is out of searches. Check `SERPAPI_KEY` and the usage on serpapi.com. |
 | Dashboard asks for a Codeforces or LeetCode URL | Add profile URLs in the form `https://codeforces.com/profile/<name>` and `https://leetcode.com/u/<name>`. |

@@ -6,7 +6,8 @@ GROQ_API_KEY= <>
 # Add as many as you like: GROQ_API_KEY_2, GROQ_API_KEY_3, ...
 GROQ_API_KEY_2=
 GROQ_MODEL=openai/gpt-oss-120b
-RAPIDAPI_KEY= <>
+# Find Jobs: Google for Jobs through SerpApi. Without it, searches use Himalayas (remote jobs).
+SERPAPI_KEY= <>
 EMAIL_PASS= <>
 EMAIL_USER=
 ML_SERVER= <>
@@ -15,3 +16,4 @@ CLOUDINARY_API_KEY= <>
 CLOUDINARY_API_SECRET= <>
 DEMO_EMAIL=demo@example.com
 SERVICE_TOKEN_SECRET=
+SERPAPI_KEY=

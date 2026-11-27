@@ -37,7 +37,7 @@ InterviewMate runs a mock interview with an AI interviewer that asks from your r
 |---|---|
 | <img src="docs/screenshots/resume-builder.png" alt="Resume Building tab with a formatted preview, a skills editor and the resume library"> | <img src="docs/screenshots/find-jobs.png" alt="Find Jobs tab with backend jobs in Pune, match percentages and matched skills"> |
 
-These were taken from the app running locally with fictional data and a drawing in place of the camera. Groq, Sarvam, Cloudinary and RapidAPI were replaced by local stand-ins, so the written questions, feedback, report and jobs are samples. The ATS Score and job match percentages were calculated by the real code.
+These were taken from the app running locally with fictional data and a drawing in place of the camera. Groq, Sarvam, Cloudinary and the job search were replaced by local stand-ins, so the written questions, feedback, report and jobs are samples. The ATS Score and job match percentages were calculated by the real code.
 
 ## Features
 
@@ -72,7 +72,7 @@ flowchart LR
     browser -->|"short-lived token"| emotion["Emotion service"]
 
     api --> mongo[("MongoDB")]
-    api --> ext["Groq, Cloudinary,<br/>Gmail, RapidAPI"]
+    api --> ext["Groq, Cloudinary,<br/>Gmail, SerpApi"]
     api --> ats["ATS service"]
     ats --> atsx["Groq, MiniLM,<br/>ChromaDB"]
     interview --> ai["Groq LLM and Whisper,<br/>Sarvam speech"]

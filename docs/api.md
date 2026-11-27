@@ -73,7 +73,7 @@ In the Express tables, **Login** means the `token` cookie is required. Browser c
 
 | Method | Path | Login | Purpose |
 |---|---|---|---|
-| POST | `/jobs/search` | Yes | Body: `role`, optional `location`, optional `apiPage` (default 1). Returns `jobs`, and `fetched`, the batch size before the location filter. |
+| POST | `/jobs/search` | Yes | Body: `role`, optional `location`, optional `cursor` from the previous answer. Returns `jobs` (each with `source`, `matchScore`, `matchedSkills`), `provider` (`serpapi` or `himalayas`) and `nextCursor`, which is `null` when there are no more. |
 
 ## Other
 

@@ -1,109 +1,68 @@
 const express = require("express");
 const router = express.Router();
-const axios = require("axios");
 const { userAuth } = require("../middleware/auth.middleware");
 const { escapeRegex } = require("../utils/escapeRegex");
+const { searchJobs } = require("../utils/jobSources");
+const JobSearchCache = require("../models/jobSearchCache.model");
+
+const CACHE_HOURS = 6;
 
 // Match whole words, so "go" does not match "google" and "c" does not match "c++".
 const mentions = (text, skill) =>
     new RegExp(`(^|[^a-z0-9+#.])${escapeRegex(skill)}($|[^a-z0-9+#])`).test(text);
 
-// 🔥 JOB SEARCH ROUTE
+const cacheKey = (role, location, cursor) =>
+    JSON.stringify([role.toLowerCase(), location.toLowerCase(), cursor || ""]);
+
+// The cache only saves quota; if MongoDB has a problem the search still runs.
+const readCache = (key) => JobSearchCache.findOne({ key }).lean().catch(() => null);
+const writeCache = (key, page) =>
+    JobSearchCache.updateOne(
+        { key },
+        { $set: { ...page, expiresAt: new Date(Date.now() + CACHE_HOURS * 3600 * 1000) } },
+        { upsert: true }
+    ).catch((err) => console.warn("[jobs] cache write failed:", err.message));
+
+/**
+ * POST /api/jobs/search  { role, location?, cursor? }
+ * Answers { success, jobs, nextCursor, provider }. Send nextCursor back to get
+ * the next page; it is null when there are no more.
+ * Only the role goes to the provider. The user's skills score each job locally.
+ */
 router.post("/search", userAuth, async (req, res) => {
+    const role = String(req.body.role || "").trim().slice(0, 100);
+    const location = String(req.body.location || "").trim().slice(0, 100);
+    const cursor = req.body.cursor ? String(req.body.cursor).slice(0, 2000) : null;
+    if (!role) return res.status(400).json({ success: false, message: "Enter a role" });
+
     try {
-        const { role, location, apiPage = 1 } = req.body;
-        const user = req.user;
-
-        const skills = user.skills || [];
-
-        const query = [role, ...skills].join(" ");
-
-        const params = {
-            keyword: query,
-            page: String(apiPage),
-            sort_by: "relevant",
-            date_posted: "past_week",
-        };
-
-        if (location && location.trim()) {
-            params.location = location.trim();
+        const key = cacheKey(role, location, cursor);
+        let page = await readCache(key);
+        if (!page) {
+            page = await searchJobs({ role, location, cursor });
+            writeCache(key, { jobs: page.jobs, provider: page.provider, nextCursor: page.nextCursor });
         }
 
-        const response = await axios.get(
-            "https://fresh-linkedin-scraper-api.p.rapidapi.com/api/v1/job/search",
-            {
-                params,
-                headers: {
-                    "x-rapidapi-key": process.env.RAPIDAPI_KEY,
-                    "x-rapidapi-host":
-                        "fresh-linkedin-scraper-api.p.rapidapi.com",
-                },
-                timeout: 30000,
-            }
-        );
+        const skills = req.user.skills || [];
+        const jobs = page.jobs
+            .map((job) => {
+                const text = `${job.title} ${job.description}`.toLowerCase();
+                const matchedSkills = skills.filter((skill) => mentions(text, skill.toLowerCase()));
+                return {
+                    ...job,
+                    matchScore: skills.length ? Math.round((matchedSkills.length / skills.length) * 100) : 0,
+                    matchedSkills,
+                };
+            })
+            .sort((a, b) => b.matchScore - a.matchScore);
 
-        // The provider reports its own failures (for example LinkedIn rate-limiting
-        // its scraper) as HTTP 2xx with success: false. Treating that as "no jobs"
-        // would hide the problem, so pass it on as an error the page can show.
-        if (response.data?.success === false) {
-            console.error("Job search provider failed:", response.data.message);
-            return res.status(503).json({
-                success: false,
-                message: "The job search service is busy right now. Try again in a few minutes.",
-            });
-        }
-
-        const jobs = response.data?.data || [];
-
-        // 🔥 Match scoring
-        const processed = jobs.map((job) => {
-            const desc = (job.description || "").toLowerCase();
-
-            let score = 0;
-            const matchedSkills = [];
-
-            skills.forEach((skill) => {
-                if (mentions(desc, skill.toLowerCase())) {
-                    score++;
-                    matchedSkills.push(skill);
-                }
-            });
-
-            return {
-                title: job.title,
-                company: job.company?.name || "Unknown",
-                location: job.location || "Remote",
-                description: job.description,
-                url: job.url,
-                matchScore: skills.length
-                    ? Math.round((score / skills.length) * 100)
-                    : 0,
-                matchedSkills,
-            };
-        });
-
-        processed.sort((a, b) => b.matchScore - a.matchScore);
-
-        // Filter by location client-side since the API doesn't enforce it strictly
-        const filtered = location && location.trim()
-            ? processed.filter((job) =>
-                job.location.toLowerCase().includes(location.trim().toLowerCase())
-              )
-            : processed;
-
-        // `fetched` counts jobs before the location filter, so the client can tell
-        // "no matches in this batch" from "no more batches".
-        res.json({ success: true, jobs: filtered, fetched: jobs.length });
-
+        res.json({ success: true, jobs, nextCursor: page.nextCursor || null, provider: page.provider });
     } catch (err) {
-        console.error("Job search failed:", err.response?.status, err.response?.data || err.message);
-        const status = err.response?.status;
-        const message =
-            status === 429 ? "The monthly job search limit has been reached. Try again later."
-            : status === 401 || status === 403 ? "Job search is not set up: the RapidAPI key is missing or invalid."
-            : err.code === "ECONNABORTED" ? "The job search service took too long to answer. Try again."
-            : "Job fetch failed";
-        res.status(status === 429 ? 429 : 502).json({ success: false, message });
+        console.error("[jobs] search failed:", err.message);
+        const message = err.quota
+            ? "The job search limit has been reached for now. Try again later."
+            : "The job search service is not answering right now. Try again in a few minutes.";
+        res.status(err.quota ? 429 : 503).json({ success: false, message });
     }
 });
 
