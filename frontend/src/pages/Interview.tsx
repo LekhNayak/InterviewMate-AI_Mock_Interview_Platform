@@ -13,8 +13,6 @@ const API_BASE_URL = import.meta.env.VITE_INTERVIEW_API;
 const API_BASE_URL2 = import.meta.env.VITE_EMOTION_API;
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL;
 const EMOTION_WAIT_MS = 8000;
-// Audio URLs are returned relative to the service root, without the /api suffix.
-const SERVICE_ROOT = API_BASE_URL?.replace(/\/api\/?$/, "");
 
 // Define the state for the interview session
 type InterviewState = "initial" | "waiting_intro" | "in_interview" | "completed";
@@ -342,16 +340,13 @@ export default function WebinarUI() {
         setSessionId(data.session_id);
         setInterviewState(data.state);
 
-        // 3. Play audio response if URL is provided
+        // 3. Play the interviewer's voice. audio_url is a data: URL that carries the audio itself.
         if (data.audio_url) {
-            // Prepend the full base URL because the audio_url is relative (e.g., /api/static/...)
-            const fullAudioUrl = `${SERVICE_ROOT}${data.audio_url}`;
-
             // Stop any currently playing audio
             if (audioRef.current) {
                 audioRef.current.pause();
             }
-            const audio = new Audio(fullAudioUrl);
+            const audio = new Audio(data.audio_url);
             audioRef.current = audio;
             audio.onended = () => { audioRef.current = null; };
             audio.play().catch(e => console.warn("Interviewer audio did not play:", e));

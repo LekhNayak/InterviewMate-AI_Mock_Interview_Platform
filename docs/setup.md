@@ -26,7 +26,7 @@ The API only accepts browser requests from `http://localhost:8080` and the produ
 
 | Feature | Services running | Keys |
 |---|---|---|
-| Sign in with the demo account | Backend, frontend | MongoDB, `DEMO_EMAIL`. `GROQ_API_KEY` must not be empty or the backend will not start. |
+| Sign in with the demo account | Backend, frontend | MongoDB, `DEMO_EMAIL`. |
 | Create an account | Backend, frontend | `EMAIL_USER`, `EMAIL_PASS` |
 | Upload a resume or job description | Backend, frontend | Groq, Cloudinary |
 | Mock interview | Backend, frontend, interview | Groq, Cloudinary. Sarvam for the spoken voice. |
@@ -88,6 +88,7 @@ Edit `backend/.env`:
 | `PORT` | `8000` |
 | `SECRET_KEY` | Any long random string. Signs the login cookie. |
 | `GROQ_API_KEY` | Groq key. Used to turn resume and JD PDFs into fields. |
+| `GROQ_API_KEY_2`, `_3`, ... | Optional backup keys. See [Several Groq keys](#several-groq-keys). |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` |
 | `RAPIDAPI_KEY` | Key for the Fresh LinkedIn Scraper API on RapidAPI |
 | `EMAIL_USER`, `EMAIL_PASS` | Gmail address and app password. The mailer uses Gmail only. |
@@ -126,13 +127,13 @@ Fill in `.env`:
 | Variable | Value |
 |---|---|
 | `GROQ_API_KEY` | Groq key. Used for questions, feedback and Whisper transcription. |
-| `GROQ_MODEL` | `qwen/qwen3.6-27b` |
+| `GROQ_API_KEY_2`, `_3`, ... | Optional backup keys. See [Several Groq keys](#several-groq-keys). |
+| `GROQ_MODEL` | `qwen/qwen3.8-27b` |
 | `SARVAM_API_KEY` | Sarvam key for the interviewer's voice. Without it, interviews run as text. |
 | `PORT` | `5000` |
+| `MONGO_URI` | The same Atlas connection string as the API. Live sessions are stored in it. |
 | `SERVICE_TOKEN_SECRET` | Optional. See [Service tokens](#service-tokens). |
 | `FLASK_DEBUG` | Optional. `1` turns on the Flask debugger, which runs code for anyone who can reach the port. Never set it on a shared network. |
-
-This service writes sessions to `data/*.json` and audio to `static/recordings/`. Both are gitignored.
 
 `npm run dev` runs the file directly, which uses Flask's development server on all network interfaces. Use gunicorn on any shared or public network, as the Dockerfile does.
 
@@ -143,6 +144,7 @@ Copy `exampleENV.txt` to `.env` in `models/Resume ATS and JD/api_service`. `npm 
 | Variable | Value |
 |---|---|
 | `GROQ_API_KEY` | Groq key for the written report |
+| `GROQ_API_KEY_2`, `_3`, ... | Optional backup keys. See [Several Groq keys](#several-groq-keys). |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` |
 | `PORT` | Optional, default `6050` |
 | `SERVICE_TOKEN_SECRET` | Optional. See [Service tokens](#service-tokens). |
@@ -166,6 +168,14 @@ cp frontend/exampleENVLOCAL.txt frontend/.env.local
 The file sets `VITE_API_BASE_URL`, `VITE_INTERVIEW_API` and `VITE_EMOTION_API` to the local ports above. Vite reads them when it starts, so restart it after a change.
 
 `npm run build` uses `frontend/.env.production` instead, if that file exists. Turborepo passes `VITE_*` variables set in the shell to the build, as Vercel sets them; others do not reach it.
+
+## Several Groq keys
+
+The API, the interview service and the ATS service each accept more than one Groq key. Put the main key in `GROQ_API_KEY` and backups in `GROQ_API_KEY_2`, `GROQ_API_KEY_3` and so on. There is no limit, and the numbers do not have to be consecutive.
+
+When Groq rejects a key (invalid, revoked or restricted) or it hits a rate or quota limit, the same request is sent with the next key in number order, and that key stays in use until it fails too. Other errors, such as a bad request or Groq being down, are reported at once, because another key would not help. The logs name the key that failed, never its value.
+
+The code is in [backend/src/utils/groqClient.js](../backend/src/utils/groqClient.js) and in `groq_keys.py` in each Python service. The two Python copies must stay the same.
 
 ## Service tokens
 

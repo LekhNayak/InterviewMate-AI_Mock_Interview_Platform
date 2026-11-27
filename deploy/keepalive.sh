@@ -18,7 +18,6 @@ set -uo pipefail
 
 BURN_SECONDS="${BURN_SECONDS:-60}"
 HOSTS=(
-	"https://interview.lekh.online/api/health"
 	"https://ats.lekh.online/api/health"
 	"https://emotion.lekh.online/api/health"
 )

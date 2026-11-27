@@ -14,5 +14,4 @@ models/**/placed_resume
 models/**/resume_db
 models/**/audio
 models/**/data
-models/**/static/recordings
 docs/screenshots

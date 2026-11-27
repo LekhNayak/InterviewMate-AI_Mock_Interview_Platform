@@ -1,6 +1,4 @@
-const Groq = require('groq-sdk');
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const { chatCompletion } = require('./groqClient');
 
 // The free "on_demand" Groq tier caps a request at 8000 tokens per minute
 // (x-ratelimit-limit-tokens), and max_tokens counts toward that budget alongside
@@ -80,7 +78,7 @@ const minimalReasoning = (model) => {
  */
 const completeJson = async ({ system, user, maxTokens = DEFAULT_MAX_TOKENS, temperature = 0.2, schema, minimalThinking = false }) => {
     const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
-    const request = (responseFormat) => groq.chat.completions.create({
+    const request = (responseFormat) => chatCompletion({
         model,
         messages: [
             { role: 'system', content: system },
@@ -115,7 +113,6 @@ const completeJson = async ({ system, user, maxTokens = DEFAULT_MAX_TOKENS, temp
 };
 
 module.exports = {
-    groq,
     completeJson,
     extractJson,
     truncateForBudget,

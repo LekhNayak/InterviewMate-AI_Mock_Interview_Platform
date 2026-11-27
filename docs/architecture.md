@@ -72,14 +72,14 @@ A resume's `sections` are in order, and each is a paragraph, dated entries, skil
 
 A resume has a `pdfUrl` only if it was uploaded as a PDF. Clients cannot set `pdfUrl`, the owner or the import report. The app does not save `video`.
 
-Live interview sessions are not in MongoDB. The interview service keeps them in JSON files until the browser saves the finished transcript through the API.
+Live interview sessions are in the `interview_sessions` collection, written by the interview service, not the API. They hold the conversation and the generated feedback, and a TTL index deletes them 7 days after they start. The browser saves the finished interview through the API as an Interview.
 
 ## Files
 
 | File | Stored in | Notes |
 |---|---|---|
 | Resume and JD PDFs | Cloudinary, as raw files with public URLs | Up to 4 MB. Uploaded `.tex` files are read and not kept. |
-| Interviewer audio | `static/recordings` in the interview service | One WAV per reply |
+| Interviewer audio | Not kept | Sent inside each reply as a `data:` URL |
 | Candidate recordings | Not kept | Both services delete them after the request |
 
 The camera feed is only shown to the candidate. It is not uploaded or recorded.
@@ -90,7 +90,7 @@ The camera feed is only shown to the candidate. It is not uploaded or recorded.
 |---|---|---|
 | Resume import | `GROQ_MODEL`, default `openai/gpt-oss-120b` | Structured output with a strict JSON schema (JSON mode if the model has none), low reasoning effort, temperature 0.2, up to 6000 tokens within the 8000-per-minute budget, input cut at 16,000 characters |
 | JD parsing | `GROQ_MODEL`, default `openai/gpt-oss-120b` | JSON mode, temperature 0.2, 3000 tokens, input cut at 16,000 characters |
-| Interview questions and feedback | `GROQ_MODEL`, default `qwen/qwen3.6-27b` | Temperature 0.4, 350 tokens per question and 1200 for feedback, reasoning off for Qwen |
+| Interview questions and feedback | `GROQ_MODEL`, default `qwen/qwen3.8-27b` | Temperature 0.4, 350 tokens per question and 1200 for feedback, reasoning off for Qwen |
 | Transcription | `whisper-large-v3-turbo` on Groq | |
 | Interviewer voice | Sarvam `bulbul:v3`, speaker `ritu`, `en-IN` | Text split into chunks of up to 490 characters, synthesised in parallel and joined |
 | ATS report | `GROQ_MODEL`, default `openai/gpt-oss-120b` | JSON mode, temperature 0.2, 2048 tokens |

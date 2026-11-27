@@ -2,6 +2,9 @@ MONGO_URI= <>
 PORT=8000
 SECRET_KEY= <> 
 GROQ_API_KEY= <>
+# Optional backup keys, tried in number order when a key is rejected or rate-limited.
+# Add as many as you like: GROQ_API_KEY_2, GROQ_API_KEY_3, ...
+GROQ_API_KEY_2=
 GROQ_MODEL=openai/gpt-oss-120b
 RAPIDAPI_KEY= <>
 EMAIL_PASS= <>

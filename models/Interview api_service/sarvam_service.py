@@ -117,6 +117,9 @@ def _tts_chunk(text: str, language: str, client: httpx.Client) -> bytes:
             "speaker": "ritu",
             "model": "bulbul:v3",
             "pace": 1,
+            # The audio is returned inside the JSON reply, which Vercel caps at 4.5 MB.
+            # 16 kHz is about 30% smaller than the default 22.05 kHz and fine for speech.
+            "speech_sample_rate": 16000,
         },
     )
     if not response.is_success:

@@ -119,9 +119,6 @@ brag-output/
 
 # Files the services write while running (uploads, sessions, audio)
 backend/tempUploads/
-models/Interview api_service/data/
-models/Interview api_service/static/recordings/*
-!models/Interview api_service/static/recordings/.gitkeep
 models/Audio_Emotion_Analysis/audio/
 
 INTERVIEW_PREP.md

@@ -1,5 +1,10 @@
 GROQ_API_KEY= <>
+# Optional backup keys, tried in number order when a key is rejected or rate-limited.
+# Add as many as you like: GROQ_API_KEY_2, GROQ_API_KEY_3, ...
+GROQ_API_KEY_2=
 SARVAM_API_KEY= <>
-GROQ_MODEL=qwen/qwen3.6-27b
+GROQ_MODEL=qwen/qwen3.8-27b
 PORT= 5000
 SERVICE_TOKEN_SECRET=
+# Same Atlas connection string as the API. Live sessions go in the interview_sessions collection.
+MONGO_URI= <>

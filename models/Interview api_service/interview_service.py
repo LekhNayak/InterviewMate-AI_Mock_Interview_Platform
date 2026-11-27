@@ -1,34 +1,30 @@
+import base64
 import json
 import os
 import re
-import tempfile
-import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 
 from dotenv import load_dotenv
-from flask import Flask, g, has_request_context, jsonify, request, send_from_directory
+from flask import Flask, g, has_request_context, jsonify, request
 from flask_cors import CORS
+from werkzeug.exceptions import RequestEntityTooLarge
 
-from groq import Groq
 from sarvam_service import text_to_speech
+from groq_keys import call_groq
 from service_auth import install_auth
+from session_store import find_session, insert_session, save_session
 
 SERVICE_ROOT = Path(__file__).resolve().parent
-DATA_DIR = SERVICE_ROOT / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-STATIC_DIR = SERVICE_ROOT / "static" / "recordings"
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 load_dotenv(SERVICE_ROOT / ".env")
 
-INTERVIEW_SESSIONS_FILE = DATA_DIR / "interview_sessions.json"
-INTERVIEW_FLOW_LOG = DATA_DIR / "interview_flow.log.jsonl"
-INTERVIEW_SESSIONS_LOG = DATA_DIR / "interview_sessions.log.jsonl"
-FEEDBACK_FILE = DATA_DIR / "feedback.json"
+# Vercel caps request and response bodies at 4.5 MB.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+# Base64 adds a third, so 3 MB of WAV (about 95 s at 16 kHz) is the most one reply can carry.
+MAX_AUDIO_BYTES = 3 * 1024 * 1024
 
 FEEDBACK_MAX_TOKENS = 1200
 FEEDBACK_ATTEMPTS = 2
@@ -38,16 +34,14 @@ ALLOWED_AUDIO_EXT = {".mp3", ".wav", ".webm", ".m4a", ".ogg", ".flac"}
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.config["UPLOAD_FOLDER"] = STATIC_DIR
-    app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
-    # Initialize CORS here to ensure it's active for all requests,
-    # including the separate GET request for audio files.
     CORS(app)
+    install_auth(app, public_paths=("/api/health",))
 
-    # Audio files are fetched by an <audio> element, which cannot send headers.
-    # Their names are random.
-    install_auth(app, public_paths=("/api/health",), public_prefixes=("/api/static/recordings/",))
+    @app.errorhandler(413)
+    def too_large(_err):
+        return jsonify({"error": "The recording is too long. Keep each answer under about 3 minutes."}), 413
 
     @app.route("/api/health", methods=["GET"])
     def health():
@@ -83,6 +77,8 @@ def create_app() -> Flask:
             return jsonify(result), 200
         except ValueError as err:
             return jsonify({"error": str(err)}), 400
+        except RequestEntityTooLarge:
+            raise
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
@@ -94,6 +90,8 @@ def create_app() -> Flask:
             return jsonify(result), 200
         except ValueError as err:
             return jsonify({"error": str(err)}), 400
+        except RequestEntityTooLarge:
+            raise
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
@@ -103,24 +101,13 @@ def create_app() -> Flask:
             file = request.files.get("audio")
             if not file:
                 raise ValueError("No audio file provided")
-
-            ext = Path(file.filename or "").suffix.lower()
-            if ext not in ALLOWED_AUDIO_EXT:
-                raise ValueError(f"Unsupported audio format. Allowed: {', '.join(sorted(ALLOWED_AUDIO_EXT))}")
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                file.save(tmp.name)
-                tmp_path = Path(tmp.name)
-
-            try:
-                transcript = _transcribe_audio_file(tmp_path)
-            finally:
-                tmp_path.unlink(missing_ok=True)
-
+            transcript = _transcribe_upload(file)
             return jsonify({"transcribed_text": transcript}), 200
 
         except ValueError as err:
             return jsonify({"error": str(err)}), 400
+        except RequestEntityTooLarge:
+            raise
         except Exception as exc:
             print("Server error:", exc)
             return jsonify({"error": str(exc)}), 500
@@ -162,66 +149,32 @@ def create_app() -> Flask:
             print(f"ERROR: feedback failed for session {session_id}: {exc}")
             return jsonify({"error": "The feedback could not be generated. Try again."}), 502
 
-    @app.route("/api/static/recordings/<path:filename>", methods=["GET"])
-    def serve_recording(filename: str):
-        # This is the correct way to serve static files from a separate endpoint
-        # The frontend will make a GET request to this URL to fetch the .mp3 file
-        return send_from_directory(
-            STATIC_DIR, 
-            filename, 
-            as_attachment=False,
-            # Explicitly setting the MIME type for robust browser support
-            mimetype="audio/wav"
-        )
-
     return app
 
 
 # ---------- Internal helpers ----------
 
-# Serializes every read-modify-write of the JSON files within this process.
-_FILE_LOCK = threading.RLock()
-
-def _read_json(path: Path) -> List[Dict]:
-    if not path.exists():
-        return []
-    with path.open("r", encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            return []
+def _log(event: Dict) -> None:
+    # One JSON line on stdout: Vercel and Docker both keep it in their logs.
+    print(json.dumps(dict(event, timestamp=datetime.now().isoformat()), ensure_ascii=False))
 
 
-def _write_json(path: Path, data: List[Dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Write to a temporary file first, so a crash cannot leave a half-written file behind.
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+def _transcribe_upload(file) -> str:
+    """Transcribe an uploaded audio file in memory. Nothing is written to disk."""
+    filename = Path(file.filename or "").name
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_AUDIO_EXT:
+        raise ValueError(f"Unsupported audio format. Allowed: {', '.join(sorted(ALLOWED_AUDIO_EXT))}")
 
-
-def _append_log(path: Path, entry: Dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-
-def _get_groq_client() -> Groq:
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError("Missing GROQ_API_KEY in the interview service .env")
-    return Groq(api_key=api_key.strip())
-
-
-def _transcribe_audio_file(path: Path) -> str:
-    client = Groq(api_key=os.getenv("GROQ_API_KEY", "").strip(), timeout=120.0)
-    with open(path, "rb") as f:
-        transcription = client.audio.transcriptions.create(
-            file=(path.name, f.read()),
+    audio = file.read()
+    transcription = call_groq(
+        lambda client: client.audio.transcriptions.create(
+            file=(filename, audio),
             model="whisper-large-v3-turbo",
             response_format="text",
-        )
+        ),
+        timeout=120.0,
+    )
     transcript = transcription.strip() if isinstance(transcription, str) else (transcription.text or "").strip()
     if not transcript:
         raise RuntimeError("Transcription returned empty result")
@@ -354,58 +307,38 @@ def _create_session(role: str, resume: str, jd: str,
         "intro_received": False,
         "start_time": datetime.now().isoformat(),
     }
-    with _FILE_LOCK:
-        sessions = _read_json(INTERVIEW_SESSIONS_FILE)
-        sessions.append(session)
-        _write_json(INTERVIEW_SESSIONS_FILE, sessions)
+    insert_session(session)
 
-    _append_log(
-        INTERVIEW_SESSIONS_LOG,
-        {
-            "session_id": session_id,
-            "role": role,
-            "level": level,
-            "duration": duration,
-            "interview_type": interview_type,
-            "timestamp": datetime.now().isoformat(),
-        },
-    )
+    _log({
+        "event": "session_started",
+        "session_id": session_id,
+        "role": role,
+        "level": level,
+        "duration": duration,
+        "interview_type": interview_type,
+    })
     return session_id
 
 
 def _fetch_session(session_id: str) -> Dict:
-    with _FILE_LOCK:
-        sessions = _read_json(INTERVIEW_SESSIONS_FILE)
-    for session in sessions:
-        if session["session_id"] == session_id:
-            owner = session.get("user_id")
-            # Someone else's session looks the same as a missing one.
-            if owner and has_request_context() and g.get("user_id") != owner:
-                break
+    session = find_session(session_id)
+    if session:
+        owner = session.get("user_id")
+        # Someone else's session looks the same as a missing one.
+        if not (owner and has_request_context() and g.get("user_id") != owner):
             return session
     raise ValueError(f"Session {session_id} not found")
 
 
 def _save_session(session: Dict) -> None:
-    with _FILE_LOCK:
-        sessions = _read_json(INTERVIEW_SESSIONS_FILE)
-        for idx, item in enumerate(sessions):
-            if item["session_id"] == session["session_id"]:
-                sessions[idx] = session
-                _write_json(INTERVIEW_SESSIONS_FILE, sessions)
-                return
-    raise ValueError("Session not found while saving")
+    save_session(session)
 
 
 def _log_flow(session_id: str, action: str, questions_count: Optional[int] = None) -> None:
-    entry = {
-        "session_id": session_id,
-        "action": action,
-        "timestamp": datetime.now().isoformat(),
-    }
+    entry = {"event": "flow", "session_id": session_id, "action": action}
     if questions_count is not None:
         entry["questions_count"] = questions_count
-    _append_log(INTERVIEW_FLOW_LOG, entry)
+    _log(entry)
 
 
 def _strip_reasoning(text: str) -> str:
@@ -422,8 +355,7 @@ def _strip_reasoning(text: str) -> str:
 
 
 def _groq_response(system: str, user: str, max_tokens: int = 350) -> str:
-    client = _get_groq_client()
-    model_name = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
+    model_name = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 
     kwargs = {}
     # Qwen3 emits <think> reasoning by default. reasoning_effort="none" turns it
@@ -432,7 +364,7 @@ def _groq_response(system: str, user: str, max_tokens: int = 350) -> str:
     if "qwen" in model_name.lower():
         kwargs["reasoning_effort"] = "none"
 
-    response = client.chat.completions.create(
+    response = call_groq(lambda client: client.chat.completions.create(
         model=model_name,
         messages=[
             {"role": "system", "content": system},
@@ -441,7 +373,7 @@ def _groq_response(system: str, user: str, max_tokens: int = 350) -> str:
         temperature=0.4,
         max_tokens=max_tokens,
         **kwargs,
-    )
+    ))
     return _strip_reasoning(response.choices[0].message.content)
 
 
@@ -465,15 +397,11 @@ def _generate_followup(session: Dict, new_answer: str) -> str:
 
 
 def _ensure_feedback(session: Dict) -> Dict:
-    """Return the stored feedback record, generating it on first use."""
-    if session.get("feedback_generated"):
-        with _FILE_LOCK:
-            records = _read_json(FEEDBACK_FILE)
-        for record in records:
-            if record.get("session_id") == session["session_id"]:
-                return record
+    """Return the feedback stored on the session, generating it on first use."""
+    if session.get("feedback_record"):
+        return session["feedback_record"]
     record = _generate_feedback(session)
-    session["feedback_generated"] = True
+    session["feedback_record"] = record
     _save_session(session)
     return record
 
@@ -542,17 +470,12 @@ Scoring guide:
     else:
         feedback["overall_rating"] = str(feedback.get("overall_rating", "0"))
 
-    record = {
+    return {
         "session_id": session["session_id"],
         "feedback": feedback,
         "role": session["role"],
         "timestamp": datetime.now().isoformat(),
     }
-    with _FILE_LOCK:
-        all_feedback = _read_json(FEEDBACK_FILE)
-        all_feedback.append(record)
-        _write_json(FEEDBACK_FILE, all_feedback)
-    return record
 
 
 def _resolve_input_text(stage: str, require_session: bool = True) -> Tuple[str, str]:
@@ -580,20 +503,7 @@ def _resolve_input_text(stage: str, require_session: bool = True) -> Tuple[str, 
     if not file:
         raise ValueError("Provide either 'text' or 'audio' in the request")
 
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in ALLOWED_AUDIO_EXT:
-        raise ValueError(f"Unsupported audio format. Allowed: {', '.join(sorted(ALLOWED_AUDIO_EXT))}")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        file.save(tmp.name)
-        tmp_path = Path(tmp.name)
-
-    try:
-        transcript = _transcribe_audio_file(tmp_path)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-    return session_id, transcript
+    return session_id, _transcribe_upload(file)
 
 
 def _handle_intro(session_id: str, intro_text: str) -> Dict:
@@ -609,7 +519,7 @@ def _handle_intro(session_id: str, intro_text: str) -> Dict:
     _save_session(session)
     _log_flow(session_id, "intro_submitted")
 
-    audio_url = _synthesize_to_file(session_id, response)
+    audio_url = _synthesize_audio(session_id, response)
     return {
         "session_id": session_id,
         "response": response,
@@ -668,7 +578,7 @@ def _handle_answer(session_id: str, answer_text: str) -> Dict:
         state = session["current_state"]
         action = "new_question"
 
-    audio_url = _synthesize_to_file(session_id, response)
+    audio_url = _synthesize_audio(session_id, response)
     return {
         "session_id": session_id,
         "response": response,
@@ -687,13 +597,19 @@ def _record_message(session: Dict, role: str, content: str, msg_type: str) -> No
         session["questions_asked"].append(content)
 
 
-def _synthesize_to_file(session_id: str, text: str) -> Optional[str]:
+def _synthesize_audio(session_id: str, text: str) -> Optional[str]:
+    """Speak the reply and return it as a data: URL the browser can play directly.
+
+    The audio travels inside the JSON response instead of as a file to fetch later,
+    because a later request may reach an instance that never had the file.
+    """
     try:
-        filename = f"api_{session_id[:8]}_{uuid.uuid4().hex}.wav"
-        out_path = STATIC_DIR / filename
         audio_bytes = text_to_speech(text)
-        out_path.write_bytes(audio_bytes)
-        return f"/api/static/recordings/{filename}"
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            # Too big for one Vercel response once base64-encoded; the text still shows.
+            print(f"WARNING: skipped {len(audio_bytes)} bytes of audio for session {session_id}")
+            return None
+        return "data:audio/wav;base64," + base64.b64encode(audio_bytes).decode("ascii")
     except Exception as e:
         print(f"ERROR: Sarvam TTS failed for session {session_id} and text starting with '{text[:50]}...'. Error: {e}")
         return None

@@ -114,11 +114,11 @@ The browser then saves the transcript, feedback and averaged voice reading throu
 |---|---|
 | Frontend | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4, shadcn/ui, React Router 7, Recharts 3, Framer Motion 12 |
 | API | Express 5, Mongoose 8, JWT in an HTTP-only cookie, bcrypt, Multer 2, Nodemailer 10 |
-| Interview service | Python 3.11, Flask, Groq (`qwen/qwen3.6-27b`, `whisper-large-v3-turbo`), Sarvam `bulbul:v3` |
+| Interview service | Python 3.11, Flask, Groq (`qwen/qwen3.8-27b`, `whisper-large-v3-turbo`), Sarvam `bulbul:v3` |
 | ATS service | Flask, sentence-transformers (`all-MiniLM-L6-v2`), ChromaDB, Groq (`openai/gpt-oss-120b`) |
 | Emotion service | Flask, TensorFlow 2.20, librosa |
 | Storage | MongoDB, Cloudinary |
-| Hosting | Vercel for the frontend and API. Docker Compose and Caddy on Oracle Cloud for the three Python services, or Render. |
+| Hosting | Vercel for the frontend, the API and the interview service. Docker Compose and Caddy on one server for the ATS and emotion services, or Render. |
 
 ## Quick start
 

@@ -97,7 +97,6 @@ JSON bodies unless noted. If `SERVICE_TOKEN_SECRET` is set, every endpoint excep
 | GET | `/get_session/<session_id>` | Full session, including the resume text |
 | GET | `/get_history/<session_id>` | Conversation and questions |
 | GET | `/get_feedback/<session_id>` | Feedback. 400 until the interview is completed, 502 if it could not be generated. |
-| GET | `/static/recordings/<filename>` | Interviewer audio (WAV) |
 
 `start_interview` requires `role`, `resume` and `jd`. Optional fields:
 
@@ -109,7 +108,7 @@ JSON bodies unless noted. If `SERVICE_TOKEN_SECRET` is set, every endpoint excep
 
 It returns `session_id` and `status: "waiting_intro"`.
 
-`submit_intro` and `submit_answer` take `session_id` and `text`, or a multipart form with `session_id` and `audio`. Audio can be mp3, wav, webm, m4a, ogg or flac, up to 50 MB. A reply to an answer looks like this:
+`submit_intro` and `submit_answer` take `session_id` and `text`, or a multipart form with `session_id` and `audio`. Audio can be mp3, wav, webm, m4a, ogg or flac, up to 4 MB, which is Vercel's limit for a request. A larger upload gets `413`. A reply to an answer looks like this:
 
 ```json
 {
@@ -118,11 +117,11 @@ It returns `session_id` and `status: "waiting_intro"`.
   "state": "in_interview",
   "action": "new_question",
   "questions_count": 3,
-  "audio_url": "/api/static/recordings/api_xxxxxxxx.wav"
+  "audio_url": "data:audio/wav;base64,UklGR..."
 }
 ```
 
-When the interview ends, `state` is `completed` and `action` is `end_interview`. `audio_url` is `null` if speech fails. The reply to `submit_intro` has no `action` or `questions_count`.
+When the interview ends, `state` is `completed` and `action` is `end_interview`. `audio_url` is the interviewer's voice as a `data:` URL (16 kHz WAV) that an `<audio>` element plays directly. It is `null` if speech fails, or if the reply is too long to fit in one response (about 95 seconds of speech). The reply to `submit_intro` has no `action` or `questions_count`.
 
 `get_feedback` returns `session_id`, `role`, `timestamp` and a `feedback` object with `overall_rating`, `scores`, `summary`, `strengths`, `areas_for_improvement` and `recommended_next_steps`.
 

@@ -2,10 +2,8 @@ const { extractPdfText } = require('../utils/pdfText');
 const { ownerId, canReadJd, jdToText } = require('../utils/jdText');
 const { uploadBuffer } = require('../config/cloudinary');
 const JobDescription = require('../models/jd.model');
-const Groq = require('groq-sdk');
 const { extractJson, truncateForBudget, DEFAULT_MAX_TOKENS } = require('../utils/groqJson');
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const { chatCompletion } = require('../utils/groqClient');
 
 const parseJobDescription = async (req, res) => {
     try {
@@ -19,7 +17,7 @@ const parseJobDescription = async (req, res) => {
 
         const text = truncateForBudget(await extractPdfText(fileBuffer));
 
-        const completion = await groq.chat.completions.create({
+        const completion = await chatCompletion({
             model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
             messages: [
                 {

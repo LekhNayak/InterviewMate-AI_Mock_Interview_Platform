@@ -2,17 +2,9 @@
 # no renewal cron. Each domain below must already have an A record pointing at
 # this VM's public IP before `docker compose up`, or the certificate request fails.
 #
-# The API (api.lekh.online) is on Vercel, not here.
-# Replace these three hostnames with your own if you use different subdomains.
-
-interview.lekh.online {
-	# Interview audio (TTS output) is streamed back through this same host,
-	# so uploads and responses both need room.
-	request_body {
-		max_size 50MB
-	}
-	reverse_proxy interview:5000
-}
+# The API (interview-backend.lekh.online) and the interview service
+# (interview-service.lekh.online) are on Vercel, not here.
+# Replace these two hostnames with your own if you use different subdomains.
 
 emotion.lekh.online {
 	request_body {

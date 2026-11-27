@@ -1,5 +1,5 @@
-# InterviewMate — the three Python services on one Oracle Cloud Ampere A1 VM
-# (ARM64), behind Caddy. The frontend and the Express API run on Vercel.
+# InterviewMate — the ATS and emotion services on one server, behind Caddy.
+# The frontend, the Express API and the interview service run on Vercel.
 #
 # Run from this directory:  docker compose up -d --build
 #
@@ -7,18 +7,6 @@
 # dev). Values under `environment:` override anything in those files.
 
 services:
-  interview:
-    build:
-      context: "../models/Interview api_service"
-    env_file: "../models/Interview api_service/.env"
-    environment:
-      PORT: 5000
-    volumes:
-      # Live sessions and feedback are JSON files here. The volume keeps
-      # interviews in progress through a rebuild.
-      - interview_data:/app/data
-    restart: unless-stopped
-
   ats:
     build:
       context: "../models/Resume ATS and JD/api_service"
@@ -49,11 +37,9 @@ services:
       - caddy_config:/config
     restart: unless-stopped
     depends_on:
-      - interview
       - ats
       - emotion
 
 volumes:
-  interview_data:
   caddy_data:
   caddy_config:

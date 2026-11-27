@@ -4,7 +4,8 @@
 
 | Symptom | Cause and fix |
 |---|---|
-| Backend stops with `GROQ_API_KEY environment variable is missing or empty` | The Groq client is created at startup. Put any value in `backend/.env` to boot, and a real key to parse PDFs. |
+| Resume or JD upload fails with `Missing GROQ_API_KEY in the API .env` | No Groq key is set. Add `GROQ_API_KEY` to `backend/.env`. |
+| Logs show `[groq] GROQ_API_KEY failed (429), trying GROQ_API_KEY_2` | That key hit its rate limit and the next one was used. Nothing to fix unless every key fails. |
 | `Database connection failed` | Check `MONGO_URI`. The server stays up and `/health` reports the database state. |
 | PowerShell says running scripts is disabled | Your execution policy blocks `npm.ps1`. Use `npm.cmd` and `npx.cmd` in place of `npm` and `npx`. |
 | `There is no .venv in …` | That Python service is not set up. Run `npm run setup:python`, or `npx turbo run setup --filter=<package>` for one. |
@@ -50,6 +51,6 @@
 |---|---|
 | `Analysis failed` in the ATS Checker | Check that the ATS service is running and that `ML_SERVER` is `http://localhost:6050`. Port 5000 is the interview service. |
 | The first analysis times out | The embedding model downloads on first use and the backend waits 60 seconds. Try again. |
-| JD Match shows `N/A` | The Groq call in the ATS service failed. Check its `GROQ_API_KEY`. |
+| JD Match shows `N/A` | The Groq call in the ATS service failed. Check its `GROQ_API_KEY` and any backup keys. |
 | `Job fetch failed` | Check `RAPIDAPI_KEY` and your RapidAPI quota. |
 | Dashboard asks for a Codeforces or LeetCode URL | Add profile URLs in the form `https://codeforces.com/profile/<name>` and `https://leetcode.com/u/<name>`. |

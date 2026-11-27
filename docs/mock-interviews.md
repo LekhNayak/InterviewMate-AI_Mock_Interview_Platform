@@ -46,7 +46,7 @@ If you leave the page before the feedback arrives, the interview does not appear
 
 ## Session states
 
-The interview service keeps each session in `data/interview_sessions.json`.
+The interview service keeps each session in MongoDB, in the `interview_sessions` collection, for 7 days.
 
 ```mermaid
 stateDiagram-v2

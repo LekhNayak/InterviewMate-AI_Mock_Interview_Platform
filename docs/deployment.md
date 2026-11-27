@@ -1,18 +1,22 @@
 # Deployment
 
-The frontend and the Express API run on Vercel. The three Python services run in Docker on one Oracle Cloud ARM machine, behind Caddy, which gets HTTPS certificates automatically. `render.yaml` describes an alternative on Render.
+The frontend, the Express API and the interview service run on Vercel. The ATS and emotion services run in Docker on one server, behind Caddy, which gets HTTPS certificates automatically. `render.yaml` describes an alternative on Render.
 
 | Hostname | Runs on | Service |
 |---|---|---|
 | `interviewmate.lekh.online` | Vercel | Frontend |
-| `api.lekh.online` | Vercel | Express API |
-| `interview.lekh.online` | Oracle | Interview service, called by the browser |
-| `emotion.lekh.online` | Oracle | Emotion service, called by the browser |
-| `ats.lekh.online` | Oracle | ATS service, called only by the API |
+| `interview-backend.lekh.online` | Vercel | Express API |
+| `interview-service.lekh.online` | Vercel | Interview service, called by the browser |
+| `emotion.lekh.online` | Server | Emotion service, called by the browser |
+| `ats.lekh.online` | Server | ATS service, called only by the API |
 
-Set them up in this order: Oracle, then the API, then the frontend. Each step needs the URLs of the one before it.
+Set them up in this order: the server and the interview service, then the API, then the frontend. Each step needs the URLs of the one before it.
 
-## Oracle Cloud: the three services
+The interview works without the other two services. Without the emotion service the feedback has no voice reading, and without the ATS service the ATS checker fails.
+
+## The server: ATS and emotion services
+
+These steps use an Oracle Cloud ARM machine. Any Linux server with Docker and about 4 GB of memory works the same way from step 4.
 
 ### 1. Create the machine
 
@@ -24,7 +28,7 @@ Save the SSH private key when prompted. You cannot download it again.
 
 ### 2. Point DNS at the machine
 
-Add three A records with the instance's public IP: `interview`, `emotion` and `ats`.
+Add two A records with the instance's public IP: `emotion` and `ats`.
 
 Do this before step 6. Caddy requests certificates when it starts, and the request fails if the names do not resolve yet.
 
@@ -65,15 +69,14 @@ Create the `.env` files from each service's `exampleENV.txt`. They are gitignore
 
 | File | Variables |
 |---|---|
-| `models/Interview api_service/.env` | `GROQ_API_KEY`, `SARVAM_API_KEY`, `GROQ_MODEL`, `SERVICE_TOKEN_SECRET` |
 | `models/Resume ATS and JD/api_service/.env` | `GROQ_API_KEY`, `GROQ_MODEL`, `SERVICE_TOKEN_SECRET` |
 | `models/Audio_Emotion_Analysis/.env` | `SERVICE_TOKEN_SECRET` |
 
-Make one `SERVICE_TOKEN_SECRET` with `openssl rand -hex 32` and use it in all three files and on the API in Vercel. Do not leave it empty. All three services are on the internet, and without it anyone can use them, and your Groq and Sarvam keys with them.
+Make one `SERVICE_TOKEN_SECRET` with `openssl rand -hex 32` and use it in both files, on the interview service and on the API in Vercel. Do not leave it empty. The services are on the internet, and without it anyone can use them, and your Groq and Sarvam keys with them.
 
 `docker-compose.yml` sets `PORT`, and its value overrides those files.
 
-Edit `deploy/Caddyfile` and `deploy/keepalive.sh` if you use hostnames other than `interview`, `emotion` and `ats` under `lekh.online`.
+Edit `deploy/Caddyfile` and `deploy/keepalive.sh` if you use hostnames other than `emotion` and `ats` under `lekh.online`.
 
 ### 6. Start
 
@@ -87,7 +90,6 @@ docker compose up -d --build --remove-orphans
 The first build is slow because TensorFlow and PyTorch are large. Watch it with `docker compose logs -f`, then check your own hostnames:
 
 ```bash
-curl https://interview.example.com/api/health
 curl https://ats.example.com/api/health
 curl https://emotion.example.com/api/health
 curl -X POST https://ats.example.com/api/analyze
@@ -111,9 +113,33 @@ Add this line:
 */10 * * * * /home/ubuntu/interviewmate/deploy/keepalive.sh >> /var/log/keepalive.log 2>&1
 ```
 
+## Vercel: the interview service
+
+[models/Interview api_service/api/index.py](../models/Interview%20api_service/api/index.py) exposes the Flask app to Vercel, and `vercel.json` sends every path to it.
+
+1. Import the repository as a new Vercel project. Set the root directory to `models/Interview api_service` and the framework preset to **Other**.
+2. Add these environment variables before the first deploy:
+
+| Variable | Value |
+|---|---|
+| `GROQ_API_KEY`, `GROQ_MODEL` | Groq key and `qwen/qwen3.8-27b` |
+| `GROQ_API_KEY_2`, `_3`, ... | Optional backup Groq keys |
+| `SARVAM_API_KEY` | Sarvam key for the interviewer's voice |
+| `MONGO_URI` | The same Atlas connection string as the API. Live sessions go in the `interview_sessions` collection. |
+| `SERVICE_TOKEN_SECRET` | The same value as on the API |
+
+3. Under **Domains**, add `interview-service.lekh.online` and create the DNS record that Vercel shows.
+4. Check it:
+
+```bash
+curl https://interview.example.com/api/health
+```
+
+Each request may run in a different instance, so the service keeps nothing on disk. Sessions are in MongoDB, and each reply carries the interviewer's voice as a `data:` URL instead of a link to a file. A request can be at most 4.5 MB, so a recorded answer can be about 3 minutes long, and a request can run for 60 seconds.
+
 ## Vercel and the monorepo
 
-The repository is an npm workspace with one `package-lock.json` at the root, run with Turborepo. Each Vercel project keeps its own root directory (`backend` or `frontend`), and Vercel installs from the repository root by itself. Leave the install and build commands at their defaults.
+The repository is an npm workspace with one `package-lock.json` at the root, run with Turborepo. Each Vercel project keeps its own root directory (`backend`, `frontend` or `models/Interview api_service`), and Vercel installs from the repository root by itself. Leave the install and build commands at their defaults.
 
 Optional: under **Settings → Git → Ignored Build Step**, enter `npx turbo-ignore`. A push then redeploys a project only when its own files, or its dependencies, changed.
 
@@ -132,11 +158,12 @@ Vercel runs the Express app in `backend/src/index.js` as one function. The file 
 | `SERVICE_TOKEN_SECRET` | The same value as on the Oracle machine |
 | `MONGO_URI`, `SECRET_KEY` | Atlas connection string, and a long random string that signs the login cookie |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Groq key and `openai/gpt-oss-120b` |
+| `GROQ_API_KEY_2`, `_3`, ... | Optional backup Groq keys |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary account |
 | `EMAIL_USER`, `EMAIL_PASS`, `RAPIDAPI_KEY` | Gmail sign-up email and job search |
 | `DEMO_EMAIL` | Account opened by the demo button. Leave empty to hide it. |
 
-4. Under **Domains**, add `api.lekh.online` and create the DNS record that Vercel shows.
+4. Under **Domains**, add `interview-backend.lekh.online` and create the DNS record that Vercel shows.
 5. Check it:
 
 ```bash
@@ -168,9 +195,9 @@ They are built into the bundle, so redeploy after changing them. `frontend/turbo
 
 ## Update
 
-Vercel redeploys both projects when you push to the production branch.
+Vercel redeploys its projects when you push to the production branch.
 
-On the Oracle machine:
+On the server:
 
 ```bash
 cd ~/interviewmate && git pull
@@ -179,8 +206,7 @@ cd deploy && docker compose up -d --build --remove-orphans
 
 ## Notes
 
-- Interview sessions and feedback are JSON files in the `interview_data` volume, so a rebuild does not end an interview in progress. The question audio is inside the container and is lost on a rebuild. Saved interviews are in MongoDB.
-- The interview service stores sessions in JSON files, so run it with one worker.
+- Live interview sessions are deleted from MongoDB 7 days after they start. Finished interviews are saved by the API as Interviews and stay.
 - The API signs a 5-minute token for each ATS request. The browser gets 3-hour tokens for the interview and emotion services.
 - To run the API in Docker yourself, build from the repository root: `docker build -f backend/Dockerfile .` The Dockerfile uses `turbo prune` to install only what the backend needs.
 

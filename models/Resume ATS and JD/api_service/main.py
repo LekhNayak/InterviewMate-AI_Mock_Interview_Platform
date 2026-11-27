@@ -10,7 +10,7 @@ from werkzeug.exceptions import BadRequest
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 import requests
-from groq import Groq
+from groq_keys import call_groq
 from sentence_transformers import SentenceTransformer, util
 import chromadb
 
@@ -96,13 +96,6 @@ def get_resume_db_diagnostics() -> Dict[str, Any]:
     except Exception as e:
         count = f"error: {e}"
     return {"resume_db_path": path, "collection": "resumes", "count": count}
-
-def _get_groq_client() -> Groq:
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError("Missing GROQ_API_KEY in .env")
-    return Groq(api_key=api_key.strip())
-
 
 # ---------------------------------
 # Prompt used in the Streamlit app
@@ -220,10 +213,9 @@ def get_best_resumes_for_JD(jd_text: str, top_k: int = 3) -> List[Dict[str, Any]
 
 
 def get_gemini_response(resume_text: str, jd: str) -> str:
-    client = _get_groq_client()
     model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     user_prompt = INPUT_PROMPT.format(text=resume_text, jd=jd)
-    response = client.chat.completions.create(
+    response = call_groq(lambda client: client.chat.completions.create(
         model=model_name,
         messages=[
             {"role": "system", "content": "You are a highly skilled ATS analyst. Always respond with valid JSON only — no markdown fences, no explanation outside the JSON."},
@@ -232,7 +224,7 @@ def get_gemini_response(resume_text: str, jd: str) -> str:
         temperature=0.2,
         max_tokens=2048,
         response_format={"type": "json_object"},
-    )
+    ))
     return response.choices[0].message.content.strip()
 
 
