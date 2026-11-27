@@ -6,5 +6,5 @@
       "excludeFiles": "{.venv,__pycache__,data,static}/**"
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index?__path=$1" }]
 }
