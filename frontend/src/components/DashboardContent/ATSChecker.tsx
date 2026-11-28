@@ -1,60 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMyJds, useResumes } from "@/lib/queries";
 import { toast } from "sonner";
-import {
-    Briefcase, FileText, Loader2, ChevronDown,
-    AlertCircle, CheckCircle2, TrendingUp, Lightbulb, ScanSearch, FolderKanban
-} from "lucide-react";
+import { Briefcase, ChevronDown, FileText, Loader2, ScanSearch } from "lucide-react";
+import AtsReportView from "@/components/ats/AtsReportView";
+import ReportBoundary from "@/components/ats/ReportBoundary";
+import type { AtsRecord, ScoringStyle } from "@/components/ats/types";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
 interface Resume { _id: string; title: string; }
 interface JD { _id: string; title: string; company: string; }
-interface ATSResult {
-    localAtsScore: number;
-    jdMatch: string;
-    profileSummary: string;
-    missingKeywords: string[];
-    technicalSkillsMatch: string[];
-    softSkillsMatch: string[];
-    experienceAlignment: string;
-    improvementSuggestions: string[];
-    projectsAnalysis: string;
-    overallComment: string;
-}
 type Mode = "quick" | "jd";
 
-function ScoreDial({ score }: { score: number }) {
-    const color = score >= 70 ? "text-green-500" : score >= 45 ? "text-yellow-500" : "text-red-500";
-    const ring = score >= 70 ? "border-green-200 bg-green-50" : score >= 45 ? "border-yellow-200 bg-yellow-50" : "border-red-200 bg-red-50";
-    return (
-        <div className={`flex flex-col items-center justify-center rounded-2xl border-2 ${ring} p-5 shrink-0 w-36`}>
-            <span className={`text-5xl font-bold ${color}`}>{Math.round(score)}</span>
-            <span className="text-[11px] text-gray-400 mt-1 font-medium uppercase tracking-wide">ATS Score</span>
-        </div>
-    );
-}
+const STYLES: { value: ScoringStyle; label: string; hint: string }[] = [
+    { value: "auto", label: "Auto (recommended)", hint: "Picks a style from the job's level." },
+    { value: "balanced", label: "Balanced", hint: "Requirements, experience and keywords weighed evenly." },
+    { value: "keyword", label: "Classic ATS", hint: "Keyword matching counts most, like older ATS filters." },
+    { value: "skills", label: "Skills first", hint: "What you can do counts most." },
+    { value: "experienced", label: "Experienced hire", hint: "Years and responsibilities count more." },
+    { value: "entry", label: "Entry level", hint: "For students and freshers: education counts, years count less." },
+];
 
-function Chip({ label, green }: { label: string; green?: boolean }) {
-    return (
-        <span className={`inline-block text-[11px] px-2.5 py-1 rounded-full border ${green
-            ? "border-green-200 bg-green-50 text-green-700"
-            : "border-gray-200 bg-gray-50 text-gray-600"}`}>
-            {label}
-        </span>
-    );
-}
-
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
-    return (
-        <div className="bg-white border border-gray-200 rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-gray-700">
-                {icon} {title}
-            </div>
-            {children}
-        </div>
-    );
-}
+// What the service is doing, shown while the user waits (an analysis takes about 10 seconds).
+const STEPS = ["Reading your resume…", "Building the job's requirement rubric…", "Checking each requirement against your resume…",
+    "Verifying every quote and keyword…", "Writing your feedback…"];
 
 function SelectField({ label, value, onChange, children, hint }: {
     label: string; value: string; onChange: (v: string) => void;
@@ -78,6 +47,24 @@ function SelectField({ label, value, onChange, children, hint }: {
     );
 }
 
+function Progress() {
+    const [step, setStep] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 2600);
+        return () => clearInterval(id);
+    }, []);
+    return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 text-gray-500">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            <ol className="flex flex-col gap-1.5 text-sm">
+                {STEPS.map((s, i) => (
+                    <li key={s} className={i < step ? "text-gray-300 line-through" : i === step ? "font-medium text-gray-700" : "text-gray-300"}>{s}</li>
+                ))}
+            </ol>
+        </div>
+    );
+}
+
 export default function ATSChecker() {
     const [mode, setMode] = useState<Mode>("quick");
     const resumes = (useResumes().data ?? []) as Resume[];
@@ -85,9 +72,9 @@ export default function ATSChecker() {
     const [resumeId, setResumeId] = useState("");
     const [jobRole, setJobRole] = useState("");
     const [jdId, setJdId] = useState("");
+    const [style, setStyle] = useState<ScoringStyle>("auto");
     const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<ATSResult | null>(null);
-
+    const [result, setResult] = useState<{ record: AtsRecord; cached: boolean } | null>(null);
 
     const handleAnalyze = async () => {
         if (!resumeId) return toast.error("Please select a resume.");
@@ -98,7 +85,7 @@ export default function ATSChecker() {
         setResult(null);
         try {
             const endpoint = mode === "quick" ? `${API}/ats/quick-analyze` : `${API}/ats/analyze`;
-            const body = mode === "quick" ? { resumeId, jobRole } : { resumeId, jdId };
+            const body = mode === "quick" ? { resumeId, jobRole, style } : { resumeId, jdId, style };
             const res = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -107,30 +94,34 @@ export default function ATSChecker() {
             });
             const data = await res.json();
             if (!res.ok || !data.success) {
-                toast.error(data.error || "Analysis failed. Make sure the ATS service is running.");
+                toast.error(data.error || "The analysis failed. Try again in a minute.");
                 return;
             }
-            setResult(data.ats);
-            toast.success("ATS analysis complete!");
+            setResult({ record: data.ats, cached: !!data.cached });
+            toast.success(data.cached ? "Same resume and job as before: showing that analysis." : "Analysis complete!");
         } catch {
-            toast.error("Network error. Make sure all services are running.");
+            toast.error("Network error. Check your connection and try again.");
         } finally {
             setLoading(false);
         }
     };
 
+    // Only a version 2 report can be drawn; anything else gets the message below.
+    const raw = result?.record.report;
+    const report = raw && raw.version === 2 && Array.isArray(raw.requirements) && Array.isArray(raw.components) ? raw : undefined;
+    const styleHint = STYLES.find((s) => s.value === style)?.hint;
+
     return (
-        /* Fills exactly the space below TopNav — no page scroll */
+        /* Fills exactly the space below TopNav; each panel scrolls on its own */
         <div className="flex overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
 
             {/* ── LEFT PANEL: form ── */}
             <div className="w-[320px] shrink-0 border-r border-gray-200 flex flex-col gap-5 p-6 overflow-y-auto">
                 <div>
-                    <h1 className="text-lg font-semibold text-gray-800">ATS Checker</h1>
-                    <p className="text-xs text-gray-400 mt-0.5">Analyze your resume against a role or JD</p>
+                    <h1 className="text-lg font-semibold text-gray-800">Resume Analyzer</h1>
+                    <p className="text-xs text-gray-400 mt-0.5">Score your resume against a job, the way applicant tracking systems do</p>
                 </div>
 
-                {/* Mode toggle */}
                 <div className="flex flex-col gap-2">
                     <button
                         onClick={() => { setMode("quick"); setResult(null); }}
@@ -152,7 +143,6 @@ export default function ATSChecker() {
 
                 <div className="h-px bg-gray-100" />
 
-                {/* Resume selector */}
                 <SelectField
                     label="Select Resume"
                     value={resumeId}
@@ -163,18 +153,18 @@ export default function ATSChecker() {
                     {resumes.map(r => <option key={r._id} value={r._id}>{r.title}</option>)}
                 </SelectField>
 
-                {/* Mode-specific input */}
                 {mode === "quick" ? (
                     <div>
                         <label className="text-[11px] font-semibold text-gray-400 mb-1.5 block tracking-wider uppercase">Job Role</label>
                         <input
                             type="text"
-                            placeholder="e.g. Software Engineer"
+                            placeholder="e.g. Software Engineer, Staff Nurse, Sales Executive"
                             value={jobRole}
                             onChange={e => setJobRole(e.target.value)}
                             onKeyDown={e => e.key === "Enter" && handleAnalyze()}
                             className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-700 focus:outline-none focus:border-gray-400 transition"
                         />
+                        <p className="text-[11px] text-gray-400 mt-1">Any profession. A JD gives a more exact result.</p>
                     </div>
                 ) : (
                     <SelectField
@@ -188,6 +178,10 @@ export default function ATSChecker() {
                     </SelectField>
                 )}
 
+                <SelectField label="Scoring style" value={style} onChange={(v) => setStyle(v as ScoringStyle)} hint={styleHint}>
+                    {STYLES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </SelectField>
+
                 <button
                     onClick={handleAnalyze}
                     disabled={loading}
@@ -195,98 +189,33 @@ export default function ATSChecker() {
                 >
                     {loading
                         ? <><Loader2 className="h-4 w-4 animate-spin" /> Analyzing...</>
-                        : "Run ATS Analysis"}
+                        : "Analyze Resume"}
                 </button>
             </div>
 
-            {/* ── RIGHT PANEL: results ── */}
-            <div className="flex-1 overflow-y-auto bg-gray-50/40 p-6">
+            {/* ── RIGHT PANEL: results, using the full width ── */}
+            <div className="min-w-0 flex-1 overflow-y-auto bg-gray-50/40 p-6">
                 {!result && !loading && (
                     <div className="flex flex-col items-center justify-center h-full text-gray-300 select-none">
                         <ScanSearch className="h-14 w-14 mb-3" />
                         <p className="text-sm font-medium">Results will appear here</p>
-                        <p className="text-xs mt-1">Select a resume and role, then click Run ATS Analysis</p>
+                        <p className="text-xs mt-1">Select a resume and a role or JD, then click Analyze Resume</p>
                     </div>
                 )}
 
-                {loading && (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
-                        <Loader2 className="h-8 w-8 animate-spin" />
-                        <p className="text-sm">Analyzing resume…</p>
-                    </div>
+                {loading && <Progress />}
+
+                {result && report && (
+                    // key: a new result resets the boundary after an earlier one failed.
+                    <ReportBoundary key={result.record._id}>
+                        <AtsReportView report={report} cached={result.cached} />
+                    </ReportBoundary>
                 )}
 
-                {result && (
-                    <div className="flex flex-col gap-4 max-w-2xl">
-
-                        {/* Score + JD match */}
-                        <div className="flex gap-4">
-                            <ScoreDial score={result.localAtsScore} />
-                            <div className="flex-1 bg-white border border-gray-200 rounded-2xl p-5 flex flex-col justify-center">
-                                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">JD Match</p>
-                                <p className="text-4xl font-bold text-gray-800">{result.jdMatch || "—"}</p>
-                                {result.profileSummary && (
-                                    <p className="text-xs text-gray-500 mt-2 leading-relaxed">{result.profileSummary}</p>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Skills */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <Section title="Technical Skills" icon={<CheckCircle2 className="h-4 w-4 text-green-500" />}>
-                                {result.technicalSkillsMatch?.length > 0
-                                    ? <div className="flex flex-wrap gap-1.5">{result.technicalSkillsMatch.map(s => <Chip key={s} label={s} green />)}</div>
-                                    : <p className="text-xs text-gray-400">None detected</p>}
-                            </Section>
-                            <Section title="Soft Skills" icon={<CheckCircle2 className="h-4 w-4 text-blue-400" />}>
-                                {result.softSkillsMatch?.length > 0
-                                    ? <div className="flex flex-wrap gap-1.5">{result.softSkillsMatch.map(s => <Chip key={s} label={s} green />)}</div>
-                                    : <p className="text-xs text-gray-400">None detected</p>}
-                            </Section>
-                        </div>
-
-                        {/* Missing keywords */}
-                        {result.missingKeywords?.length > 0 && (
-                            <Section title="Missing Keywords" icon={<AlertCircle className="h-4 w-4 text-red-400" />}>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {result.missingKeywords.map(k => <Chip key={k} label={k} />)}
-                                </div>
-                            </Section>
-                        )}
-
-                        {/* Experience alignment */}
-                        {result.experienceAlignment && (
-                            <Section title="Experience Alignment" icon={<TrendingUp className="h-4 w-4 text-purple-400" />}>
-                                <p className="text-sm text-gray-600 leading-relaxed">{result.experienceAlignment}</p>
-                            </Section>
-                        )}
-
-                        {/* Suggestions */}
-                        {result.improvementSuggestions?.length > 0 && (
-                            <Section title="Improvement Suggestions" icon={<Lightbulb className="h-4 w-4 text-yellow-500" />}>
-                                <ul className="flex flex-col gap-2">
-                                    {result.improvementSuggestions.map((s, i) => (
-                                        <li key={i} className="text-sm text-gray-600 flex gap-2 leading-snug">
-                                            <span className="text-yellow-400 shrink-0 mt-0.5">•</span> {s}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </Section>
-                        )}
-
-                        {/* Projects analysis */}
-                        {result.projectsAnalysis && (
-                            <Section title="Projects Analysis" icon={<FolderKanban className="h-4 w-4 text-indigo-400" />}>
-                                <p className="text-sm text-gray-600 leading-relaxed">{result.projectsAnalysis}</p>
-                            </Section>
-                        )}
-
-                        {/* Overall comment */}
-                        {result.overallComment && (
-                            <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 text-sm text-gray-500 leading-relaxed italic">
-                                "{result.overallComment}"
-                            </div>
-                        )}
+                {result && !report && (
+                    <div className="flex h-full flex-col items-center justify-center text-center text-gray-500">
+                        <p className="text-sm font-medium">This result came from an older version of the ATS service.</p>
+                        <p className="mt-1 text-xs">Restart or redeploy the ATS service, then run the analysis again.</p>
                     </div>
                 )}
             </div>

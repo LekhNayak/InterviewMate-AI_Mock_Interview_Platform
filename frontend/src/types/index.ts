@@ -73,7 +73,7 @@ export interface ImportReport {
 export interface Resume {
     _id?: string;
     title: string;
-    /** The uploaded PDF. The ATS Checker reads it. */
+    /** The uploaded PDF. The Resume Analyzer reads it. */
     pdfUrl?: string;
     source?: "pdf" | "tex" | "scratch";
     sourceName?: string;

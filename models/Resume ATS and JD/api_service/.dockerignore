@@ -6,3 +6,6 @@ exampleENV.txt
 # is already built and committed.
 placed_resume/
 package.json
+.venv/
+api/
+vercel.json

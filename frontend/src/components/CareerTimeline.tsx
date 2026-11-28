@@ -31,9 +31,9 @@ const CareerTimeline: React.FC<CareerTimelineProps> = ({
         },
         {
             id: "ats-score",
-            title: "ATS Score Generator",
+            title: "Resume Analyzer",
             description:
-                "Get an ATS-style match score with suggestions to improve it.",
+                "Match your resume against any job: an ATS score, requirement-by-requirement evidence and fixes.",
         },
         {
             id: "job-finder",

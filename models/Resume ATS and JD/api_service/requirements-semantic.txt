@@ -1,0 +1,7 @@
+# Optional embedding engine in semantic/: adds the "Semantic similarity" score
+# component and the ChromaDB resume bank. Needs PyTorch, so it does not fit on
+# Vercel; the Dockerfile installs it. Switch it on with ATS_SEMANTIC=1.
+-r requirements.txt
+sentence-transformers>=2.7.0
+chromadb>=0.5.0
+tqdm>=4.66.0

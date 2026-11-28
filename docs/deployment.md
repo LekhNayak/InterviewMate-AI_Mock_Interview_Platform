@@ -1,6 +1,6 @@
 # Deployment
 
-The frontend, the Express API and the interview service run on Vercel. The ATS and emotion services run in Docker on one server, behind Caddy, which gets HTTPS certificates automatically. `render.yaml` describes an alternative on Render.
+The frontend, the Express API, the interview service and the ATS service run on Vercel. The emotion service runs in Docker on one server, behind Caddy, which gets HTTPS certificates automatically. `render.yaml` describes an alternative on Render.
 
 | Hostname | Runs on | Service |
 |---|---|---|
@@ -8,11 +8,11 @@ The frontend, the Express API and the interview service run on Vercel. The ATS a
 | `interview-backend.lekh.online` | Vercel | Express API |
 | `interview-service.lekh.online` | Vercel | Interview service, called by the browser |
 | `emotion.lekh.online` | Server | Emotion service, called by the browser |
-| `ats.lekh.online` | Server | ATS service, called only by the API |
+| `ats.lekh.online` | Vercel | ATS service, called only by the API |
 
 Set them up in this order: the server and the interview service, then the API, then the frontend. Each step needs the URLs of the one before it.
 
-The interview works without the other two services. Without the emotion service the feedback has no voice reading, and without the ATS service the ATS checker fails.
+The interview works without the other two services. Without the emotion service the feedback has no voice reading, and without the ATS service the Resume Analyzer fails.
 
 ## The server: ATS and emotion services
 
@@ -117,7 +117,7 @@ Add this line:
 
 [models/Interview api_service/api/index.py](../models/Interview%20api_service/api/index.py) exposes the Flask app to Vercel, and `vercel.json` sends every path to it.
 
-1. Import the repository as a new Vercel project. Set the root directory to `models/Interview api_service` and the framework preset to **Other**.
+1. Import the repository as a new Vercel project. Set the root directory to `models/Interview api_service` and the framework preset to **Other**. `vercel.json` sets the install and build commands, so the folder's `package.json` does not make Vercel treat it as a Node project.
 2. Add these environment variables before the first deploy:
 
 | Variable | Value |
@@ -136,6 +136,20 @@ curl https://interview.example.com/api/health
 ```
 
 Each request may run in a different instance, so the service keeps nothing on disk. Sessions are in MongoDB, and each reply carries the interviewer's voice as a `data:` URL instead of a link to a file. A request can be at most 4.5 MB, so a recorded answer can be about 3 minutes long, and a request can run for 60 seconds.
+
+## Vercel: the ATS service
+
+The same setup as the interview service. [api/index.py](../models/Resume%20ATS%20and%20JD/api_service/api/index.py) exposes the app, and `vercel.json` sets the install command, sends every path to it and leaves the optional `semantic/` engine out of the function.
+
+1. Import the repository as a new Vercel project. Set the root directory to `models/Resume ATS and JD/api_service` and the framework preset to **Other**.
+2. Add `GROQ_API_KEY` (and backup keys `GROQ_API_KEY_2`, ...), `GROQ_MODEL` = `openai/gpt-oss-120b`, and `SERVICE_TOKEN_SECRET`, the same value as on the API.
+3. Under **Domains**, add `ats.lekh.online`.
+4. Check it: `curl https://ats.example.com/api/health` answers `"status": "ok"` and `"semantic": false`.
+5. Set `ML_SERVER` on the API to `https://ats.lekh.online` and redeploy the API.
+
+An analysis takes about 10 seconds and makes two or three Groq calls. With one Groq key, several analyses in a row can wait on the free tier's per-minute token limit; backup keys avoid that.
+
+The server in `deploy/` can still run the ATS service instead. Its Docker image includes the optional embedding engine.
 
 ## Vercel and the monorepo
 

@@ -31,7 +31,7 @@ backend/                          Express API
   src/config/                     MongoDB, Cloudinary, cookie and mail settings
 models/
   Interview api_service/          Interview service: sessions, questions, speech, feedback
-  Resume ATS and JD/api_service/  ATS service: score, report, similar resumes
+  Resume ATS and JD/api_service/  ATS service: ats_core/ scoring engine, optional semantic/ embeddings
   Audio_Emotion_Analysis/         Emotion service: three Keras models
 deploy/                           Docker Compose, Caddyfile and keep-alive script
 render.yaml                       Alternative Render deployment
@@ -64,7 +64,8 @@ All collections are in MongoDB through Mongoose.
 | OTP | email, otp, attempts, createdAt (expires after 300 seconds) |
 | ParsedResume | userId, title, pdfUrl, source and sourceName (PDF, .tex or made in the builder), header (name, email, phone, location, links), sections, layout, importReport |
 | JobDescription | url, title, company, location, description, requiredSkills, jobType, uploadedBy, isPublic |
-| ATS | user, resume, jobDescription or jobRole, jdMatch, missingKeywords, profileSummary, technicalSkillsMatch, softSkillsMatch, experienceAlignment, improvementSuggestions, projectsAnalysis, overallComment, localAtsScore |
+| ATS | user, resume, jobDescription or jobRole, inputKey, score, verdict, style, report (the service's full answer), and older summary fields filled from it: jdMatch, missingKeywords, profileSummary, technicalSkillsMatch, softSkillsMatch, experienceAlignment, improvementSuggestions, projectsAnalysis, overallComment, localAtsScore |
+| AtsRubric | key (JD and its last update, or a role), rubric. Unused rubrics expire after 90 days. |
 | Interview | userId, type, interviewType, role, company, level, duration, transcript, feedback (rating, four scores, summary, strengths, areas, next steps, voice emotion), jdId, resumeId, optional video |
 | Company | name, role, brief, type, mode, color, link, pdf. Not used by the frontend. |
 
@@ -93,8 +94,9 @@ The camera feed is only shown to the candidate. It is not uploaded or recorded.
 | Interview questions and feedback | `GROQ_MODEL`, default `qwen/qwen3.8-27b` | Temperature 0.4, 350 tokens per question and 1200 for feedback, reasoning off for Qwen |
 | Transcription | `whisper-large-v3-turbo` on Groq | |
 | Interviewer voice | Sarvam `bulbul:v3`, speaker `ritu`, `en-IN` | Text split into chunks of up to 490 characters, synthesised in parallel and joined |
-| ATS report | `GROQ_MODEL`, default `openai/gpt-oss-120b` | JSON mode, temperature 0.2, 2048 tokens |
-| ATS score | `all-MiniLM-L6-v2` | Cosine similarity times 150, capped at 99 |
+| ATS rubric, judgements and feedback | `GROQ_MODEL`, default `openai/gpt-oss-120b` | Structured JSON, temperature 0, seed 7, low reasoning effort; 2500, 3000 and 2200 tokens |
+| ATS score | Calculated by code | Weighted parts; see [Resumes and the Resume Analyzer](resume-and-ats.md#what-the-score-means) |
+| ATS semantic similarity (optional) | `all-MiniLM-L6-v2` | Only with `ATS_SEMANTIC=1`; cosine 0.15 to 0.65 maps to 0 to 100 |
 | Voice emotion | `model3.h5`, `model4.h5`, `model_mw.h5` | MFCC features |
 
 `groqJson.js` sizes the parsing calls for a limit of 8,000 tokens per minute on Groq's free tier.

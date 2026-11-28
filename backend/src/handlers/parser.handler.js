@@ -38,7 +38,7 @@ const parseResume = async (req, res) => {
         const { resume, report } = await importResume({ kind: isTex ? "tex" : "pdf", content, fileName });
 
         // Stored after the import worked, so a failed import leaves no file behind.
-        // The ATS Checker reads this original PDF.
+        // The Resume Analyzer reads this original PDF.
         let pdfUrl;
         if (!isTex) {
             const publicId = `${Date.now()}_${fileName.replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "_")}`;

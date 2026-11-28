@@ -31,7 +31,7 @@ InterviewMate runs a mock interview with an AI interviewer that asks from your r
 
 | Set up an interview | Check a resume against a job |
 |---|---|
-| <img src="docs/screenshots/simulation-setup.png" alt="Simulation Settings dialog with role, interview type, difficulty, duration and resume"> | <img src="docs/screenshots/ats-checker.png" alt="ATS Checker with a score of 71, a JD match of 78 percent, matched skills, missing keywords and suggestions"> |
+| <img src="docs/screenshots/simulation-setup.png" alt="Simulation Settings dialog with role, interview type, difficulty, duration and resume"> | <img src="docs/screenshots/ats-checker.png" alt="Resume Analyzer results"> |
 
 | Edit a resume | Find jobs |
 |---|---|
@@ -74,7 +74,7 @@ flowchart LR
     api --> mongo[("MongoDB")]
     api --> ext["Groq, Cloudinary,<br/>Gmail, SerpApi"]
     api --> ats["ATS service"]
-    ats --> atsx["Groq, MiniLM,<br/>ChromaDB"]
+    ats --> atsx["Groq"]
     interview --> ai["Groq LLM and Whisper,<br/>Sarvam speech"]
     interview --> disk[("JSON and WAV<br/>files on disk")]
     emotion --> keras["Keras models"]
@@ -115,14 +115,14 @@ The browser then saves the transcript, feedback and averaged voice reading throu
 | Frontend | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4, shadcn/ui, React Router 7, Recharts 3, Framer Motion 12 |
 | API | Express 5, Mongoose 8, JWT in an HTTP-only cookie, bcrypt, Multer 2, Nodemailer 10 |
 | Interview service | Python 3.11, Flask, Groq (`qwen/qwen3.8-27b`, `whisper-large-v3-turbo`), Sarvam `bulbul:v3` |
-| ATS service | Flask, sentence-transformers (`all-MiniLM-L6-v2`), ChromaDB, Groq (`openai/gpt-oss-120b`) |
+| ATS service | Flask, pypdf, Groq (`openai/gpt-oss-120b`). Optional: sentence-transformers (`all-MiniLM-L6-v2`) and ChromaDB |
 | Emotion service | Flask, TensorFlow 2.20, librosa |
 | Storage | MongoDB, Cloudinary |
-| Hosting | Vercel for the frontend, the API and the interview service. Docker Compose and Caddy on one server for the ATS and emotion services, or Render. |
+| Hosting | Vercel for the frontend, the API, the interview service and the ATS service. Docker Compose and Caddy on one server for the emotion service, or Render. |
 
 ## Quick start
 
-You need **Node.js 20.19+ or 22.13++**, **Python 3.11**, a **MongoDB** server, and keys for **Groq** and **Cloudinary**. A **Sarvam** key adds the interviewer's voice. This runs accounts, resumes and mock interviews. For the ATS Checker, job search and email sign-up, see [Setup](docs/setup.md).
+You need **Node.js 20.19+ or 22.13++**, **Python 3.11**, a **MongoDB** server, and keys for **Groq** and **Cloudinary**. A **Sarvam** key adds the interviewer's voice. This runs accounts, resumes and mock interviews. For the Resume Analyzer, job search and email sign-up, see [Setup](docs/setup.md).
 
 **1. Get the code.**
 
@@ -167,7 +167,7 @@ If a step fails, see [Troubleshooting](docs/troubleshooting.md).
 | [Architecture](docs/architecture.md) | Services, data model, accounts, models in use |
 | [API reference](docs/api.md) | All endpoints |
 | [Mock interviews](docs/mock-interviews.md) | Using them, session states, failures |
-| [Resumes and the ATS Checker](docs/resume-and-ats.md) | Parsing, scoring and the analysis flow |
+| [Resumes and the Resume Analyzer](docs/resume-and-ats.md) | Parsing, scoring and the analysis flow |
 | [Job search](docs/job-search.md) | How results are matched and paged |
 | [Emotion service](docs/emotion-service.md) | Standalone voice analysis API |
 | [Deployment](docs/deployment.md) | Vercel, Docker Compose on Oracle Cloud, Render |
@@ -176,7 +176,7 @@ If a step fails, see [Troubleshooting](docs/troubleshooting.md).
 ## Honest limits
 
 - **Not security reviewed.** Do not upload anything confidential. The interview, emotion and ATS services check for a login only when `SERVICE_TOKEN_SECRET` is set.
-- **Scores are estimates.** Feedback comes from a language model. The ATS Score is text similarity, not the result of a real applicant tracking system. Neither has been measured for accuracy.
+- **Scores are estimates.** Feedback comes from a language model. The ATS score is calculated from requirement evidence, keywords and format checks, modelled on how applicant tracking systems screen, but it is not the result of any specific ATS. Neither has been measured for accuracy.
 - **Voice emotion is experimental.** The models' accuracy has not been measured here, and the reading does not affect your score.
 - **Video is not recorded.** The camera is only a mirror for you.
 - **Live sessions are files on one server.** The interview service does not scale past one process.

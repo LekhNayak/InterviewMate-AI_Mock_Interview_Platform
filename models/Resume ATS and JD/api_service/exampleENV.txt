@@ -4,3 +4,8 @@ GROQ_API_KEY= <>
 GROQ_API_KEY_2=
 GROQ_MODEL=openai/gpt-oss-120b
 SERVICE_TOKEN_SECRET=
+# Optional. 1 adds the embedding similarity component and the resume bank.
+# Needs: pip install -r requirements-semantic.txt (the Dockerfile sets it).
+ATS_SEMANTIC=
+# Optional. Overrides scoring weights for every analysis, e.g. {"keywords": 0.3}
+ATS_WEIGHTS=

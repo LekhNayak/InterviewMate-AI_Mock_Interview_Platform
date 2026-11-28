@@ -35,7 +35,8 @@ export default function Dashboard() {
         case "Resume Building":
             return scroll(<ResumeBuilder />);
 
-        case "Resume ATS Checker":
+        case "Resume Analyzer":
+        case "Resume ATS Checker": // the old name, for saved links
             return <ATSChecker />;
 
         case "Find Jobs":  

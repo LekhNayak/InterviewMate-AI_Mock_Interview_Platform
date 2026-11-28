@@ -129,14 +129,25 @@ When the interview ends, `state` is `completed` and `action` is `end_interview`.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | Status |
-| GET | `/debug/db` | Index path and document count |
-| POST | `/analyze` | Score a resume against a job description |
+| GET | `/health` | Status, model, scoring styles and whether the semantic engine is on |
+| GET | `/debug/db` | Resume bank path and size. 404 when the semantic engine is off. |
+| POST | `/analyze` | Score a resume against a job description or a job role |
 
-`/analyze` takes a multipart form with `jd_text` and either a PDF `file` or a `resume_url`, or JSON with `jd_text` and `resume_url`. It returns `resume_filename`, `local_ATS_score`, `Gemini_JSON` and `BestResumesForJD`, which is empty unless the form field `include_similar` is `true`. The name `Gemini_JSON` is historical. The report comes from Groq.
+`/analyze` takes a multipart form (or JSON) with:
+
+| Field | Value |
+|---|---|
+| `file` or `resume_url` | The resume PDF, up to 4 MB |
+| `jd_text` or `job_role` | The job description, or a role name when there is none |
+| `style` | Optional: `auto`, `balanced`, `keyword`, `skills`, `experienced` or `entry` |
+| `rubric` | Optional: the `rubric` an earlier answer returned for the same job, as JSON. The requirements, and so the score, then stay the same. |
+| `weights` | Optional: JSON object of component weights, such as `{"keywords": 0.3}` |
+| `include_similar` | Optional: `true` adds `similar_resumes` when the semantic engine is on |
+
+It answers with `score`, `verdict`, `style`, `components` (each part's score and weight), `knockouts`, `job`, `candidate`, `requirements` (status, evidence quote, `verified`), `keywords` (`match`: `exact`, `context` or `none`), `checks`, `resume`, `insights` (summary, strengths, gaps, suggestions, bullet rewrites, projects analysis, verdict; `null` if that step failed), `rubric` and `rubric_reused`. A PDF with no text answers `422`; a failed AI step answers `502`.
 
 ```bash
-curl -X POST http://localhost:6050/api/analyze -F "jd_text=Python backend engineer" -F "file=@resume.pdf"
+curl -X POST http://localhost:6050/api/analyze -F "job_role=Data Analyst" -F "file=@resume.pdf"
 ```
 
 In Windows PowerShell use `curl.exe` instead of `curl`.

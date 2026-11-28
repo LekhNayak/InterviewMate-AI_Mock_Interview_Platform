@@ -1,4 +1,4 @@
-# Resumes and the ATS Checker
+# Resumes and the Resume Analyzer
 
 ## Build and edit resumes
 
@@ -31,7 +31,7 @@ The preview is what prints: A4 pages, and a page number when there is more than 
 1. A PDF's text is extracted with `pdf-parse`. A `.tex` file is read as source, without its comments and package setup.
 2. Groq returns the header and every section, in the file's order and with its headings. A strict JSON schema fixes the shape of the answer.
 3. Each line of the file is compared with the result. A line counts as captured when most of its words are in the resume.
-4. The resume is saved under your account, and the PDF is stored for the ATS Checker. The server sets the owner, the PDF link and the report itself.
+4. The resume is saved under your account, and the PDF is stored for the Resume Analyzer. The server sets the owner, the PDF link and the report itself.
 
 The report after an upload lists each section with what it became and how many entries it has, the share of lines captured, any lines that were not, and, for a `.tex` file, headings with no section. **Discard import** deletes the resume. The report stays available from the library menu.
 
@@ -39,43 +39,86 @@ PDF and `.tex` files are accepted, up to 4 MB. A scanned PDF is an image and can
 
 ## Check a resume against a job
 
-![ATS Checker showing an ATS score of 71, a JD match of 78 percent, matched skills, missing keywords and suggestions](screenshots/ats-checker.png)
+![Resume Analyzer results](screenshots/ats-checker.png)
 
-**Resume ATS Checker** has two modes:
+**Resume Analyzer** has two modes:
 
 | Mode | Compares your resume with |
 |---|---|
-| Quick Check (Job Role) | A short generic description of the role you type |
-| Check with JD | A job description you uploaded |
+| Quick Check (Job Role) | The requirements a typical posting for the role you type would list. Works for any profession. |
+| Check with JD | A job description you uploaded. The text of its original PDF is used when it can be read, because it keeps the posting's own required and preferred sections. |
 
-The resume must have been uploaded as a PDF, because the analysis reads the original file. Edits made in the app and resumes made from scratch are not included.
+The resume must have been uploaded as a PDF, because the analysis reads the original file the way an applicant tracking system would. Edits made in the app and resumes made from scratch are not included.
 
-Choose a resume, fill in the role or JD, and choose **Run ATS Analysis**. You get two separate numbers:
+Choose a resume, the role or JD and, optionally, a scoring style, then choose **Analyze Resume**. It takes about 10 seconds.
 
-- **ATS Score** comes from text similarity. Both texts are embedded with `all-MiniLM-L6-v2`, and the cosine similarity is multiplied by 150 and capped at 99. It measures topic overlap and is not a pass mark used by any real ATS.
-- **JD Match** is a percentage estimated by the language model. It comes with matched skills, missing keywords, experience alignment, suggestions, a projects analysis and a short verdict.
+### What the score means
+
+The score out of 100 is calculated by code from evidence. The language model never sets it.
+
+| Part | What it measures |
+|---|---|
+| Required qualifications | Share of the job's required skills, tools and knowledge the resume shows. Met counts fully, partly counts half. |
+| Preferred qualifications | The same for nice-to-have items |
+| Experience | Relevant years against the job's minimum, and experience requirements |
+| Responsibilities | Whether the resume shows the duties the job describes |
+| Education and certifications | Degrees, licences and certifications the job asks for |
+| Keyword match | The job's terms written in the resume, as keyword filters look for them, with synonyms. A requirement shown in other words counts 75%. |
+| ATS readability | 12 format checks: readable text, no icon fonts, contact details, standard headings, length, bullets, measurable results, action verbs, weak phrases, first person and dates |
+| Semantic similarity | Only with the optional embedding engine (see below) |
+
+A part the job does not ask for is left out, and the other weights are scaled up. 80 and above is a strong match, 65 a good one, 50 a partial one.
+
+A missing **must-have** requirement, such as a licence, a required degree or a minimum number of years, caps the score at 45, because most ATS screen those out first. For years of experience this applies only below half the years asked for.
+
+Every requirement comes with a quote from the resume as evidence. The service checks that each quote really is in the resume. A match the resume does not support is downgraded and marked **Unverified**.
+
+### Scoring styles
+
+| Style | Weighs most |
+|---|---|
+| Auto | Entry level for intern and entry-level jobs, Experienced hire for senior and lead jobs, Balanced otherwise |
+| Balanced | Required qualifications, then experience, keywords and responsibilities |
+| Classic ATS | Keyword match, like older keyword-filter ATS |
+| Skills first | Required and preferred qualifications |
+| Experienced hire | Experience and responsibilities |
+| Entry level | Qualifications and education; years count little |
+
+`ATS_WEIGHTS` in the ATS service's `.env` overrides any weight for every analysis.
+
+### The same input gives the same result
+
+The first analysis of a job turns it into a rubric of requirements, which the API stores in the `atsrubrics` collection. Every later analysis of that job or role is judged against the same rubric. Editing the JD builds a new one.
+
+Running the same resume PDF against the same job with the same scoring style again returns the saved analysis instead of a new one.
 
 ## How the analysis runs
 
 ```mermaid
 flowchart TB
-    run["Run ATS Analysis"]
+    run["Analyze Resume"]
     run -->|"not yours, missing,<br/>or has no PDF"| err1["400, 403 or 404"]
-    run --> pdf["Express sends the PDF<br/>to the ATS service"]
-    pdf -->|"download, service or<br/>PDF read fails"| err2["500, nothing saved"]
-    pdf --> text["Text from PyPDF2"]
-    text --> emb["ATS Score from<br/>MiniLM embeddings"]
-    text --> llm["Groq report"]
-    llm -->|"call fails"| na["JD Match N/A"]
-    llm -->|"not JSON"| raw["Empty report"]
-    emb --> save[("ATS record")]
-    llm -->|ok| save
-    na --> save
-    raw --> save
+    run --> same{"Same resume, job<br/>and style as before?"}
+    same -->|yes| old[("Saved analysis")]
+    same -->|no| svc["ATS service reads the PDF"]
+    svc -->|"no text: a scan"| err2["422, nothing saved"]
+    svc --> rub{"Rubric stored<br/>for this job?"}
+    rub -->|no| ext["Groq: job to rubric"]
+    rub -->|yes| judge
+    ext --> judge["Groq: judge each requirement,<br/>quoting the resume"]
+    judge --> ver["Check every quote and<br/>keyword against the resume"]
+    ver --> score["Keywords, format checks,<br/>weighted score"]
+    score --> coach["Groq: feedback written<br/>from those results"]
+    coach --> save[("ATS record")]
+    judge -->|"Groq fails"| err3["502, nothing saved"]
 ```
 
-The PDF download times out after 20 seconds and the ATS call after 60 seconds. The first call is slow because the embedding model loads on first use.
+If only the feedback step fails, the score, evidence and checks are still saved, without the written feedback.
 
-The ATS service can also return the three most similar resumes from its ChromaDB index, if `include_similar` is sent. The app does not ask for them, because they quote other people's resumes.
+The engine is in `models/Resume ATS and JD/api_service/ats_core/`. It needs no PyTorch, so it runs on Vercel.
+
+### Optional embedding engine
+
+The `semantic/` folder holds the earlier embedding scoring (`all-MiniLM-L6-v2`) and the ChromaDB resume bank. It needs PyTorch, which is too large for Vercel, so it is off unless `ATS_SEMANTIC=1` is set and `requirements-semantic.txt` is installed. The Dockerfile does both. It then adds the **Semantic similarity** part to the score, and `include_similar=true` returns the three closest resumes from the bank. The app does not ask for those, because they quote other people's resumes. See [semantic/README.md](../models/Resume%20ATS%20and%20JD/api_service/semantic/README.md).
 
 Endpoints are in the [API reference](api.md#ats).

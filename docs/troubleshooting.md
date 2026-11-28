@@ -33,7 +33,7 @@
 | `File too large` | PDFs and `.tex` files can be up to 4 MB. |
 | `AI response was truncated` | The document is too long to parse in one pass. Shorten it. |
 | Groq error 413 or 429 | The request is over your Groq limit. Parsing is sized for 8,000 tokens per minute. Wait a minute and retry. |
-| `This resume has no PDF` in the ATS Checker | It was made from scratch. Upload it as a PDF to analyze it. |
+| `This resume has no PDF` in the Resume Analyzer | It was made from scratch. Upload it as a PDF to analyze it. |
 
 ## Interviews
 
@@ -49,8 +49,10 @@
 
 | Symptom | Cause and fix |
 |---|---|
-| `Analysis failed` in the ATS Checker | Check that the ATS service is running and that `ML_SERVER` is `http://localhost:6050`. Port 5000 is the interview service. |
+| `Analysis failed` in the Resume Analyzer | Check that the ATS service is running and that `ML_SERVER` is `http://localhost:6050`. Port 5000 is the interview service. |
 | The first analysis times out | The embedding model downloads on first use and the backend waits 60 seconds. Try again. |
-| JD Match shows `N/A` | The Groq call in the ATS service failed. Check its `GROQ_API_KEY` and any backup keys. |
+| `The AI analysis failed` or `The AI service is busy` | The Groq calls in the ATS service failed. Check its `GROQ_API_KEY`, add backup keys, and try again in a minute. |
+| ATS results show no feedback text | Only the feedback step failed. The score and evidence are still right; run it again later for the text. |
+| `No text could be read from this PDF` | The resume is a scan or an image. Export it from a text editor instead. |
 | Find Jobs shows only remote jobs "via Himalayas" | SerpApi failed or is out of searches. Check `SERPAPI_KEY` and the usage on serpapi.com. |
 | Dashboard asks for a Codeforces or LeetCode URL | Add profile URLs in the form `https://codeforces.com/profile/<name>` and `https://leetcode.com/u/<name>`. |

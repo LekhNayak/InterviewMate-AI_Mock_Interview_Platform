@@ -1,339 +1,151 @@
-import os
+"""ATS service: scores a resume PDF against a job description or a job role.
+
+The scoring engine is in ats_core/ (see its __init__.py). The optional embedding
+engine is in semantic/ and is only used when installed and switched on.
+"""
 import json
-from io import BytesIO
-from urllib.parse import urlparse, unquote
-from typing import Any, Dict, List
+import os
+from urllib.parse import unquote, urlparse
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from werkzeug.exceptions import BadRequest
-from dotenv import load_dotenv
-from PyPDF2 import PdfReader
 import requests
-from groq_keys import call_groq
-from sentence_transformers import SentenceTransformer, util
-import chromadb
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from groq import APIError
+from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 
-from service_auth import install_auth
-
-
-# ---------------------------------
-# Environment and global resources
-# ---------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
-
-# Load .env from project root first, then from api_service as fallback
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+load_dotenv(os.path.join(os.path.dirname(BASE_DIR), ".env"))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-# Lazy initialization - will be loaded on first use
-embedding_model = None
-chroma_client = None
-collection = None
+import semantic  # noqa: E402
+from ats_core.engine import VERSION, analyze  # noqa: E402
+from ats_core.llm import AnalysisError, model_name  # noqa: E402
+from ats_core.pdf import UnreadableResume  # noqa: E402
+from ats_core.scoring import PRESETS  # noqa: E402
+from service_auth import install_auth  # noqa: E402
 
-def get_embedding_model():
-    """Lazy load embedding model"""
-    global embedding_model
-    if embedding_model is None:
-        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-    return embedding_model
-
-def resolve_resume_db_path() -> str:
-    """Resolve the path to the ChromaDB 'resume_db' directory with sensible fallbacks.
-
-    Priority:
-    1) RESUME_DB_PATH env var if set
-    2) <project_root>/resume_db if exists
-    3) <api_service>/resume_db if exists
-    4) default to <project_root>/resume_db
-    """
-    # 1) Explicit env var
-    env_path = os.getenv("RESUME_DB_PATH")
-    if env_path and os.path.isdir(env_path):
-        return env_path
-
-    # 2) Project root
-    project_db = os.path.join(PROJECT_ROOT, "resume_db")
-    if os.path.isdir(project_db):
-        return project_db
-
-    # 3) api_service dir
-    service_db = os.path.join(BASE_DIR, "resume_db")
-    if os.path.isdir(service_db):
-        return service_db
-
-    # 4) Default
-    return project_db
+# Vercel caps a request at 4.5 MB.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+MAX_JD_CHARS = 20000
 
 
-def get_chroma_client():
-    """Lazy load ChromaDB client"""
-    global chroma_client
-    if chroma_client is None:
-        chroma_path = resolve_resume_db_path()
-        chroma_client = chromadb.PersistentClient(path=chroma_path)
-    return chroma_client
-
-def get_collection():
-    """Lazy load ChromaDB collection"""
-    global collection
-    if collection is None:
-        client = get_chroma_client()
-        try:
-            collection = client.get_collection("resumes")
-        except Exception:
-            collection = client.get_or_create_collection("resumes")
-    return collection
-
-
-def get_resume_db_diagnostics() -> Dict[str, Any]:
-    """Return diagnostics about the resume database path and collection count."""
-    path = resolve_resume_db_path()
+def fetch_pdf_bytes_from_url(resume_url: str):
+    """Download a PDF and return its bytes and a file name. Raises BadRequest."""
+    parsed = urlparse(resume_url or "")
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise BadRequest("resume_url must be an http(s) URL")
     try:
-        coll = get_collection()
-        count = coll.count()
-    except Exception as e:
-        count = f"error: {e}"
-    return {"resume_db_path": path, "collection": "resumes", "count": count}
-
-# ---------------------------------
-# Prompt used in the Streamlit app
-# ---------------------------------
-INPUT_PROMPT = """
-Act as a highly skilled and experienced ATS (Application Tracking System) 
-with deep expertise in technical recruiting and resume parsing.
-
-Your task is to analyze and evaluate a resume against a provided job description (JD). 
-Provide a comprehensive and structured evaluation in about 200–250 words.
-
-Inputs:
-resume: {text}
-description: {jd}
-
-Your output must be a structured string in JSON format with the following fields:
-
-{{
-"JD Match": "xx%", 
-"MissingKeywords": ["keyword1", "keyword2", ...], 
-"Profile Summary": "A concise summary based on the resume",
-"TechnicalSkillsMatch": ["skill1", "skill2", ...], 
-"SoftSkillsMatch": ["skill1", "skill2", ...], 
-"ExperienceAlignment": "Brief summary comparing candidate's experience with JD", 
-"ImprovementSuggestions": ["Tip1", "Tip2", ...],
-"ProjectsAnalysis": "Evaluate the candidate's projects: are they relevant to the JD, is the tech stack aligned with required skills, and do the projects demonstrate practical experience?",
-"OverallComment": "Final verdict on candidate's alignment with the JD"
-}}
-"""
-
-
-# ---------------------------------
-# Helper functions
-# ---------------------------------
-def extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
-    reader = PdfReader(BytesIO(pdf_bytes))
-    return "".join([page.extract_text() or "" for page in reader.pages])
-
-
-def safe_parse_json(text: str) -> Dict[str, Any]:
-    try:
-        cleaned = text.strip().replace("```json", "").replace("```", "")
-        start, end = cleaned.find("{"), cleaned.rfind("}") + 1
-        return json.loads(cleaned[start:end])
-    except Exception:
-        return {"raw_text": text}
-
-
-def compute_local_score(resume_text: str, jd_text: str) -> float:
-    model = get_embedding_model()
-    emb_resume = model.encode(resume_text)
-    emb_jd = model.encode(jd_text)
-    sim = util.cos_sim(emb_resume, emb_jd).item()
-    # Cosine similarity raw scores cluster in 0.3–0.7; scale to a friendlier 0–99 range
-    boosted = min(99.0, sim * 100 * 1.5)
-    return round(boosted, 2)
-
-
-def fetch_pdf_bytes_from_url(resume_url: str) -> (bytes, str):
-    """Download PDF from a URL and return bytes and a best-effort filename.
-
-    Raises:
-        BadRequest: if the URL is invalid, not reachable, not a PDF, or empty.
-    """
-    if not resume_url or not isinstance(resume_url, str):
-        raise BadRequest("Invalid resume_url")
-
-    try:
-        resp = requests.get(resume_url, timeout=20, stream=True)
-    except Exception as e:
-        raise BadRequest(f"Failed to download resume: {str(e)}")
-
+        resp = requests.get(resume_url, timeout=20)
+    except requests.RequestException as err:
+        raise BadRequest(f"Failed to download resume: {err}")
     if resp.status_code != 200:
         raise BadRequest(f"Failed to download resume: HTTP {resp.status_code}")
-
-    content_type = resp.headers.get("Content-Type", "").lower()
-    if "pdf" not in content_type and not resume_url.lower().endswith(".pdf"):
-        # Some providers may not set content-type properly; allow .pdf suffix fallback
+    if "pdf" not in resp.headers.get("Content-Type", "").lower() and not parsed.path.lower().endswith(".pdf"):
         raise BadRequest("URL does not point to a PDF file")
-
-    pdf_bytes = resp.content
-    if not pdf_bytes:
+    if not resp.content:
         raise BadRequest("Downloaded file is empty")
-
-    parsed = urlparse(resume_url)
-    filename = os.path.basename(parsed.path) or "resume.pdf"
-    filename = unquote(filename)
-    if not filename.lower().endswith(".pdf"):
-        filename = f"{filename}.pdf"
-
-    return pdf_bytes, filename
+    if len(resp.content) > MAX_UPLOAD_BYTES:
+        raise BadRequest("The resume is larger than 4 MB")
+    filename = unquote(os.path.basename(parsed.path)) or "resume.pdf"
+    return resp.content, filename if filename.lower().endswith(".pdf") else f"{filename}.pdf"
 
 
-def get_best_resumes_for_JD(jd_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
-    try:
-        resume_collection = get_collection()
-        model = get_embedding_model()
-        
-        # Check if collection has any data
-        if resume_collection.count() == 0:
-            return []
-        
-        jd_embedding = model.encode(jd_text).tolist()
-        results = resume_collection.query(query_embeddings=[jd_embedding], n_results=top_k)
-        documents = results.get("documents", [[]])[0] if results else []
-        metadatas = results.get("metadatas", [[]])[0] if results else []
-        return [
-            {"filename": meta.get("filename", "Unknown"), "snippet": (doc or "")[:700]}
-            for doc, meta in zip(documents, metadatas)
-        ]
-    except Exception as e:
-        # Return empty list if database query fails
-        print(f"Warning: Could not query resume database: {e}")
-        return []
+def _field(name: str) -> str:
+    body = request.get_json(silent=True) if request.is_json else None
+    value = (body or {}).get(name) if body is not None else request.form.get(name)
+    return str(value).strip() if value is not None else ""
 
 
-def get_gemini_response(resume_text: str, jd: str) -> str:
-    model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
-    user_prompt = INPUT_PROMPT.format(text=resume_text, jd=jd)
-    response = call_groq(lambda client: client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": "You are a highly skilled ATS analyst. Always respond with valid JSON only — no markdown fences, no explanation outside the JSON."},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.2,
-        max_tokens=2048,
-        response_format={"type": "json_object"},
-    ))
-    return response.choices[0].message.content.strip()
-
-
-# ---------------------------------
-# Flask app
-# ---------------------------------
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES + 512 * 1024
+CORS(app)
 # Only the Express API calls this service. With SERVICE_TOKEN_SECRET set, it must
 # send a token signed with the same secret.
 install_auth(app, public_paths=("/", "/api/health"))
 
+
+@app.errorhandler(RequestEntityTooLarge)
+def too_large(_err):
+    return jsonify({"error": "The resume is larger than 4 MB"}), 413
+
+
 @app.route("/", methods=["GET"])
 def root():
-    return jsonify({
-        "message": "ATS Score Tracker API",
-        "version": "1.0.0",
-        "status": "running",
-        "endpoints": {
-            "health": "/api/health",
-            "analyze": "/api/analyze (POST)"
-        }
-    })
+    return jsonify({"service": "InterviewMate ATS", "version": VERSION,
+                    "endpoints": {"health": "/api/health", "analyze": "/api/analyze (POST)"}})
 
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
+    engine = semantic.load()
+    return jsonify({"status": "ok", "version": VERSION, "model": model_name(),
+                    "semantic": engine is not None, "styles": ["auto", *PRESETS]})
 
 
 @app.route("/api/debug/db", methods=["GET"])
 def debug_db():
-    return jsonify(get_resume_db_diagnostics())
+    engine = semantic.load()
+    if engine is None:
+        return jsonify({"semantic": False, "detail": "The semantic engine is not installed or ATS_SEMANTIC is off."}), 404
+    return jsonify(engine.diagnostics())
 
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze_resume():
-    # Accept either multipart/form-data with file OR resume_url, or JSON with resume_url
-    jd_text = None
-    resume_filename = None
-    pdf_bytes = None
+    """Form or JSON fields:
+    file (PDF upload) or resume_url; jd_text, or job_role when there is no JD;
+    optional style (auto, balanced, keyword, skills, experienced, entry);
+    optional weights (JSON object of component weights); optional include_similar=true.
+    """
+    jd_text = _field("jd_text")[:MAX_JD_CHARS]
+    job_role = _field("job_role")[:120]
+    if not jd_text and not job_role:
+        return jsonify({"error": "Give jd_text or job_role"}), 400
 
-    if request.is_json:
-        body = request.get_json(silent=True) or {}
-        jd_text = (body.get("jd_text") or "").strip()
-        resume_url = (body.get("resume_url") or "").strip()
-    else:
-        jd_text = (request.form.get("jd_text") or "").strip()
-        resume_url = (request.form.get("resume_url") or "").strip()
-
-    if not jd_text:
-        return jsonify({"error": "JD text is required"}), 400
-
-    # 1) File upload path
-    if "file" in request.files and request.files["file"].filename != "":
-        file = request.files["file"]
-        if not file.filename.lower().endswith(".pdf"):
+    upload = request.files.get("file")
+    if upload and upload.filename:
+        if not upload.filename.lower().endswith(".pdf"):
             return jsonify({"error": "Only PDF files are supported"}), 400
-        resume_filename = file.filename
-        pdf_bytes = file.read()
-    # 2) URL path
-    elif resume_url:
+        pdf_bytes, filename = upload.read(), upload.filename
+    elif _field("resume_url"):
         try:
-            pdf_bytes, resume_filename = fetch_pdf_bytes_from_url(resume_url)
-        except BadRequest as br:
-            return jsonify({"error": str(br)}), 400
-        except Exception as e:
-            return jsonify({"error": f"Failed to fetch resume from URL: {str(e)}"}), 400
+            pdf_bytes, filename = fetch_pdf_bytes_from_url(_field("resume_url"))
+        except BadRequest as err:
+            return jsonify({"error": err.description}), 400
     else:
         return jsonify({"error": "Provide either a PDF file or resume_url"}), 400
-    
+
+    weights = rubric = None
     try:
-        resume_text = extract_text_from_pdf_bytes(pdf_bytes)
-    except Exception as e:
-        return jsonify({"error": f"Failed to parse PDF: {str(e)}"}), 400
-    
-    # Compute local ATS score
-    local_score = compute_local_score(resume_text, jd_text)
-    
-    # Get Gemini response
+        if _field("weights"):
+            weights = json.loads(_field("weights"))
+        if _field("rubric"):
+            rubric = json.loads(_field("rubric"))
+    except ValueError:
+        return jsonify({"error": "weights and rubric must be JSON objects"}), 400
+
     try:
-        gemini_raw = get_gemini_response(resume_text, jd_text)
-        gemini_json = safe_parse_json(gemini_raw)
-    except Exception as e:
-        gemini_json = {
-            "JD Match": "N/A",
-            "MissingKeywords": [],
-            "Profile Summary": "Gemini API unavailable.",
-            "TechnicalSkillsMatch": [],
-            "SoftSkillsMatch": [],
-            "ExperienceAlignment": "—",
-            "ImprovementSuggestions": ["Retry later or check API key."],
-            "OverallComment": f"Evaluation failed: {str(e)}"
-        }
-    
-    # Opt-in: the results quote other people's resumes
-    include_similar = str(request.form.get("include_similar", "")).lower() == "true"
-    top_resumes = get_best_resumes_for_JD(jd_text, top_k=3) if include_similar else []
-    
-    # Prepare result
-    result = {
-        "resume_filename": resume_filename,
-        "local_ATS_score": local_score,
-        "Gemini_JSON": gemini_json,
-        "BestResumesForJD": top_resumes,
-    }
-    
+        result = analyze(
+            pdf_bytes,
+            jd_text=jd_text or None,
+            job_role=job_role or None,
+            style=_field("style") or None,
+            weights=weights if isinstance(weights, dict) else None,
+            include_similar=_field("include_similar").lower() == "true",
+            rubric=rubric if isinstance(rubric, dict) else None,
+        )
+    except UnreadableResume as err:
+        return jsonify({"error": str(err)}), 422
+    except AnalysisError as err:
+        return jsonify({"error": f"The AI analysis failed: {err} Try again in a minute."}), 502
+    except APIError as err:
+        print(f"ERROR: Groq request failed: {err}")
+        return jsonify({"error": "The AI service is busy or unavailable. Try again in a minute."}), 502
+
+    result["resume_filename"] = filename
     return jsonify(result)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 6050)), debug=False)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 6050)), debug=os.getenv("FLASK_DEBUG") == "1")

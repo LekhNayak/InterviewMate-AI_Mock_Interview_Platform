@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pip install -r requirements.txt",
+  "buildCommand": "echo skip",
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{.venv,__pycache__,semantic,resume_db,placed_resume}/**"
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index?__path=$1" }]
+}

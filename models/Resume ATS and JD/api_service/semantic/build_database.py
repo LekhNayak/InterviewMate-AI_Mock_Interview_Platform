@@ -1,10 +1,20 @@
+"""Builds the ChromaDB resume bank that semantic/engine.py searches.
+
+Run from the service folder with the semantic packages installed:
+    pip install -r requirements-semantic.txt
+    python -m semantic.build_database
+
+PDFs are read from placed_resume/ (or PLACED_RESUME_PATH) and stored in
+resume_db/ (or RESUME_DB_PATH), both in the service folder.
+"""
 import os
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import chromadb
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# The service folder, one level up, so the data stays where main.py expects it.
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def resolve_path(default_relative: str, env_var: str) -> str:
     env_path = os.getenv(env_var)

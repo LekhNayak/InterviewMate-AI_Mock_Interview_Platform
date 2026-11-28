@@ -64,7 +64,7 @@ export default function Sidebar({ activeMenu, setActiveMenu }: SidebarProps) {
         { label: "Dashboard", icon: LayoutDashboard },
         { label: "Simulations", icon: PlayCircle },
         { label: "Resume Building", icon: FileUser },
-        { label: "Resume ATS Checker", icon: ScanSearch },
+        { label: "Resume Analyzer", icon: ScanSearch },
         {
     label: "Find Jobs",
     icon: Briefcase, // reuse same icon

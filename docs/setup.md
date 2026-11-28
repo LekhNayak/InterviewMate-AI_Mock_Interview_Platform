@@ -30,7 +30,7 @@ The API only accepts browser requests from `http://localhost:8080` and the produ
 | Create an account | Backend, frontend | `EMAIL_USER`, `EMAIL_PASS` |
 | Upload a resume or job description | Backend, frontend | Groq, Cloudinary |
 | Mock interview | Backend, frontend, interview | Groq, Cloudinary. Sarvam for the spoken voice. |
-| ATS Checker | Backend, frontend, ATS | Groq, Cloudinary |
+| Resume Analyzer | Backend, frontend, ATS | Groq, Cloudinary |
 | Find Jobs | Backend, frontend | SerpApi key, or nothing for remote jobs only (Himalayas) |
 | Voice emotion in feedback | Emotion, with the mock interview services | None |
 
@@ -143,15 +143,16 @@ Copy `exampleENV.txt` to `.env` in `models/Resume ATS and JD/api_service`. `npm 
 
 | Variable | Value |
 |---|---|
-| `GROQ_API_KEY` | Groq key for the written report |
+| `GROQ_API_KEY` | Groq key for the rubric, the judgements and the feedback |
 | `GROQ_API_KEY_2`, `_3`, ... | Optional backup keys. See [Several Groq keys](#several-groq-keys). |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` |
 | `PORT` | Optional, default `6050` |
 | `SERVICE_TOKEN_SECRET` | Optional. See [Service tokens](#service-tokens). |
-| `RESUME_DB_PATH` | Optional. Folder of the ChromaDB index to search. Must already exist. |
-| `PLACED_RESUME_PATH` | Optional, read by `build_database.py` only. Folder of PDFs to index. |
+| `ATS_WEIGHTS` | Optional. JSON that overrides scoring weights, such as `{"keywords": 0.3}` |
+| `ATS_SEMANTIC` | Optional. `1` turns on the embedding engine, if it is installed |
+| `RESUME_DB_PATH`, `PLACED_RESUME_PATH` | Optional, for the embedding engine's resume bank only |
 
-The install includes PyTorch and is large. The first analysis downloads the `all-MiniLM-L6-v2` model. `build_database.py` rebuilds the index from a folder of PDFs.
+`requirements.txt` is small and has no PyTorch. The optional embedding engine needs `pip install -r requirements-semantic.txt` and `ATS_SEMANTIC=1`; see [semantic/README.md](../models/Resume%20ATS%20and%20JD/api_service/semantic/README.md).
 
 ## Emotion service
 
