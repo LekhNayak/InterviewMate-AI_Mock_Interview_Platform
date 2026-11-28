@@ -5,7 +5,7 @@
   "functions": {
     "main.py": {
       "maxDuration": 60,
-      "excludeFiles": "{.venv,__pycache__,semantic,resume_db,placed_resume}/**"
+      "excludeFiles": "{.venv,__pycache__,resume_db,placed_resume}/**"
     }
   }
 }

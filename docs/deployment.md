@@ -136,7 +136,7 @@ Each request may run in a different instance, so the service keeps nothing on di
 
 ## Vercel: the ATS service
 
-Vercel finds the Flask `app` in [main.py](../models/Resume%20ATS%20and%20JD/api_service/main.py) by itself and passes it every path unchanged, so this service needs no rewrite and no `api/index.py`. `vercel.json` sets the install command and leaves the optional `semantic/` engine out of the function. Do not add a rewrite: Vercel would still run `main.py`, which then sees the rewritten path and answers 404.
+Vercel finds the Flask `app` in [main.py](../models/Resume%20ATS%20and%20JD/api_service/main.py) by itself and passes it every path unchanged, so this service needs no rewrite and no `api/index.py`. `vercel.json` sets the install command and leaves the embedding engine's data folders out of the function. Keep `semantic/` in it: `main.py` imports that package, which stays off because its large packages are not installed. Do not add a rewrite: Vercel would still run `main.py`, which then sees the rewritten path and answers 404.
 
 1. Import the repository as a new Vercel project. Set the root directory to `models/Resume ATS and JD/api_service` and the framework preset to **Other**.
 2. Add `GROQ_API_KEY` (and backup keys `GROQ_API_KEY_2`, ...), `GROQ_MODEL` = `openai/gpt-oss-120b`, and `SERVICE_TOKEN_SECRET`, the same value as on the API.
