@@ -6,8 +6,7 @@
     "frontend",
     "backend",
     "models/Interview api_service",
-    "models/Resume ATS and JD/api_service",
-    "models/Audio_Emotion_Analysis"
+    "models/Resume ATS and JD/api_service"
   ],
   "scripts": {
     "dev": "turbo run dev",

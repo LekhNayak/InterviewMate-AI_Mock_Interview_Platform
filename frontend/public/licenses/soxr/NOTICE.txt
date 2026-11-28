@@ -1,0 +1,16 @@
+InterviewMate's voice analysis resamples audio in the browser with the SoX Resampler library (libsoxr),
+compiled to WebAssembly.
+
+  File        frontend/src/lib/voice/assets/soxr.wasm (served under /assets/ with a hashed name)
+  SHA-256     8ba2dbc5fcb132feb603ef0393b9bee4dba8bf7d5ce45ed6da21ec119586b207
+  Taken from  app/soxr_wasm.wasm in the npm package wasm-audio-resampler 2.0.0
+              https://github.com/geekuillaume/wasm-audio-resampler (MIT, see LICENSE-wasm-audio-resampler.txt)
+
+libsoxr
+  SoX Resampler Library, Copyright (c) 2007-18 robs@users.sourceforge.net
+  Licensed under the GNU Lesser General Public License, version 2.1 or later (see COPYING.LGPL).
+  Source: https://sourceforge.net/projects/soxr/
+
+The file is unmodified and is loaded as a separate WebAssembly module, so it can be replaced with another
+build of libsoxr. To rebuild it, follow the build instructions of wasm-audio-resampler, which compile
+libsoxr with Emscripten.

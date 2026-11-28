@@ -7,7 +7,7 @@ How to run every part of InterviewMate on your own machine. For the short versio
 | Tool | Version | Why |
 |---|---|---|
 | Node.js | 20.19 or later, or 22.13 or later | Required by Vite 7 and the lint tools. The backend image uses Node 20. |
-| Python | 3.11 | Used by every Dockerfile and by `render.yaml`. The emotion service pins packages for it. |
+| Python | 3.11 | Used by every Dockerfile and by `render.yaml`. The voice analysis reference tools pin packages for it. |
 | MongoDB | Local server or Atlas | Tested locally with MongoDB 8.0. |
 
 ## Ports
@@ -18,7 +18,6 @@ How to run every part of InterviewMate on your own machine. For the short versio
 | Express API | `backend` | 8000 with the example `.env`. The code falls back to 5000 if `PORT` is not set. |
 | Interview service | `models/Interview api_service` | 5000 |
 | ATS service | `models/Resume ATS and JD/api_service` | 6050 |
-| Emotion service | `models/Audio_Emotion_Analysis` | 8090 |
 
 The API only accepts browser requests from `http://localhost:8080` and the production sites listed in [backend/src/index.js](../backend/src/index.js). Open the app at `localhost`, not `127.0.0.1`.
 
@@ -32,11 +31,11 @@ The API only accepts browser requests from `http://localhost:8080` and the produ
 | Mock interview | Backend, frontend, interview | Groq, Cloudinary. Sarvam for the spoken voice. |
 | Resume Analyzer | Backend, frontend, ATS | Groq, Cloudinary |
 | Find Jobs | Backend, frontend | SerpApi key, or nothing for remote jobs only (Himalayas) |
-| Voice emotion in feedback | Emotion, with the mock interview services | None |
+| Voice emotion in feedback | The mock interview services. The analysis runs in the browser. | None |
 
 ## Install and run
 
-The repository is an npm workspace run with [Turborepo](https://turborepo.com). It has five packages:
+The repository is an npm workspace run with [Turborepo](https://turborepo.com). It has four packages:
 
 | Package | Folder |
 |---|---|
@@ -44,7 +43,6 @@ The repository is an npm workspace run with [Turborepo](https://turborepo.com). 
 | `backend` | `backend` |
 | `interview-service` | `models/Interview api_service` |
 | `ats-service` | `models/Resume ATS and JD/api_service` |
-| `emotion-service` | `models/Audio_Emotion_Analysis` |
 
 Install the frontend, the API and Turborepo once, from the repository root. There is one `package-lock.json`, at the root.
 
@@ -58,7 +56,7 @@ Then set up the Python services. Each gets its own `.venv`, made with Python 3.1
 npm run setup:python
 ```
 
-That installs TensorFlow and PyTorch, which are large. To set up one service, name its package: `npx turbo run setup --filter=interview-service`. [scripts/python.mjs](../scripts/python.mjs) does the work, the same way on Windows, macOS and Linux.
+To set up one service, name its package: `npx turbo run setup --filter=interview-service`. [scripts/python.mjs](../scripts/python.mjs) does the work, the same way on Windows, macOS and Linux.
 
 Run these from the root. The commands are the same in bash and PowerShell.
 
@@ -66,9 +64,10 @@ Run these from the root. The commands are the same in bash and PowerShell.
 |---|---|
 | `npm run dev:web` | Starts the frontend and the API |
 | `npm run dev:interview` | Also starts the interview service, which mock interviews need |
-| `npm run dev` | Starts all five |
+| `npm run dev` | Starts all four |
 | `npm run build` | Builds the frontend. Turborepo caches it, so an unchanged build takes a moment. |
 | `npm run lint` | Runs ESLint, also cached |
+| `npm test -w frontend` | Runs the frontend tests, including the voice analysis checks |
 
 While services run, Turborepo shows each one's output on its own. Choose one with the arrow keys; Ctrl+C stops them all. To run any mix, filter by package name: `npx turbo run dev --filter=backend --filter=ats-service`.
 
@@ -154,11 +153,9 @@ Copy `exampleENV.txt` to `.env` in `models/Resume ATS and JD/api_service`. `npm 
 
 `requirements.txt` is small and has no PyTorch. The optional embedding engine needs `pip install -r requirements-semantic.txt` and `ATS_SEMANTIC=1`; see [semantic/README.md](../models/Resume%20ATS%20and%20JD/api_service/semantic/README.md).
 
-## Emotion service
+## Voice analysis
 
-In `models/Audio_Emotion_Analysis`, `npm run dev` runs `main.py`. `.env` is optional and holds only `SERVICE_TOKEN_SECRET`. `PORT` is optional and defaults to `8090`.
-
-It loads the `.h5` models by relative path, so it must run from its own folder. `npm run dev` does that.
+Nothing to start: the voice emotion reading runs in the browser. Its reference and test tools in `models/Audio_Emotion_Analysis` are optional; see [Voice analysis](voice-analysis.md).
 
 ## Frontend
 
@@ -166,7 +163,7 @@ It loads the `.h5` models by relative path, so it must run from its own folder. 
 cp frontend/exampleENVLOCAL.txt frontend/.env.local
 ```
 
-The file sets `VITE_API_BASE_URL`, `VITE_INTERVIEW_API` and `VITE_EMOTION_API` to the local ports above. Vite reads them when it starts, so restart it after a change.
+The file sets `VITE_API_BASE_URL` and `VITE_INTERVIEW_API` to the local ports above. Vite reads them when it starts, so restart it after a change.
 
 `npm run build` uses `frontend/.env.production` instead, if that file exists. Turborepo passes `VITE_*` variables set in the shell to the build, as Vercel sets them; others do not reach it.
 
@@ -180,13 +177,12 @@ The code is in [backend/src/utils/groqClient.js](../backend/src/utils/groqClient
 
 ## Service tokens
 
-The browser calls the interview and emotion services directly, and the API calls the ATS service. To limit them to signed-in users, set the same `SERVICE_TOKEN_SECRET` (32 characters or more) in four places:
+The browser calls the interview service directly, and the API calls the ATS service. To limit them to signed-in users, set the same `SERVICE_TOKEN_SECRET` (32 characters or more) in three places:
 
 | File | Service |
 |---|---|
 | `backend/.env` | Express API, which issues the tokens |
 | `models/Interview api_service/.env` | Interview service |
-| `models/Audio_Emotion_Analysis/.env` | Emotion service |
 | `models/Resume ATS and JD/api_service/.env` | ATS service |
 
 The API gives a signed-in user a token that lasts 3 hours, and signs a 5-minute token for each ATS request. The services reject requests without one. An interview session can then be read only by the user who started it. If the variable is empty, the services accept every request and print a warning when they start.

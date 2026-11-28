@@ -1,0 +1,62 @@
+{
+  "source": "models/Audio_Emotion_Analysis/model3.h5",
+  "source_sha256": "723debe8cee53d5eb24de2cf1da5f14aa6914444bc839a932e6164123723bba5",
+  "dtype": "float32, little-endian, C order (Keras layout: kernels are [k, in, out] and [in, out])",
+  "values": 289350,
+  "tensors": {
+    "conv1_kernel": {
+      "shape": [
+        5,
+        91,
+        256
+      ],
+      "offset": 0
+    },
+    "conv1_bias": {
+      "shape": [
+        256
+      ],
+      "offset": 116480
+    },
+    "conv2_kernel": {
+      "shape": [
+        5,
+        256,
+        128
+      ],
+      "offset": 116736
+    },
+    "conv2_bias": {
+      "shape": [
+        128
+      ],
+      "offset": 280576
+    },
+    "dense1_kernel": {
+      "shape": [
+        128,
+        64
+      ],
+      "offset": 280704
+    },
+    "dense1_bias": {
+      "shape": [
+        64
+      ],
+      "offset": 288896
+    },
+    "dense2_kernel": {
+      "shape": [
+        64,
+        6
+      ],
+      "offset": 288960
+    },
+    "dense2_bias": {
+      "shape": [
+        6
+      ],
+      "offset": 289344
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Architecture
 
-InterviewMate is a React frontend, an Express API and three Flask services. The diagrams of the whole system and of one interview are in the [README](../README.md#architecture). This page covers the parts behind them.
+InterviewMate is a React frontend, an Express API and two Flask services. The voice emotion reading runs in the browser. The diagrams of the whole system and of one interview are in the [README](../README.md#architecture). This page covers the parts behind them.
 
 ## Who talks to whom
 
@@ -8,7 +8,6 @@ InterviewMate is a React frontend, an Express API and three Flask services. The 
 |---|---|---|
 | Browser | Express API | Yes, by JWT cookie, on every route except sign-up, login, the demo routes, logout, `GET /api/companies` and `/health` |
 | Browser | Interview service | By a short-lived token from the API, if `SERVICE_TOKEN_SECRET` is set. A session then belongs to the user who started it. Audio files are public under random names. |
-| Browser | Emotion service | By the same token |
 | Express API | ATS service | By a 5-minute token the API signs for each request, if `SERVICE_TOKEN_SECRET` is set |
 | Browser | Codeforces API, a public LeetCode API | Not applicable. These are public profile lookups for the dashboard. |
 
@@ -21,6 +20,8 @@ frontend/                         React app (Vite)
   src/components/Resume/          Resume list, editor and preview
   src/components/progress/        Codeforces and LeetCode cards
   src/components/profile/         Interview calendar and skill links
+  src/lib/voice/                  Voice emotion analysis in a Web Worker, and its tests
+  voice-check/                    Developer page for browser_check.py, served only by the dev server
 backend/                          Express API
   src/index.js                    App entry, CORS list, route mounting
   src/routes/ src/handlers/       One file per area: user, parser, jd, ats, interview, company, jobs
@@ -32,10 +33,10 @@ backend/                          Express API
 models/
   Interview api_service/          Interview service: sessions, questions, speech, feedback
   Resume ATS and JD/api_service/  ATS service: ats_core/ scoring engine, optional semantic/ embeddings
-  Audio_Emotion_Analysis/         Emotion service: three Keras models
+  Audio_Emotion_Analysis/         The voice model and the old service's analysis, kept as the reference for the tests
 deploy/                           Docker Compose, Caddyfile and keep-alive script
 render.yaml                       Alternative Render deployment
-package.json, package-lock.json   npm workspace of the five packages, with one lockfile
+package.json, package-lock.json   npm workspace of the four packages, with one lockfile
 turbo.json                        Turborepo tasks: build and lint (cached), dev, setup
 scripts/python.mjs                Sets up and runs a Python service with its own .venv
 ```
@@ -51,7 +52,7 @@ The **Resume Building** tab is `DashboardContent/ResumeBuilder.tsx`. The dashboa
 3. The cookie is called `token`, is HTTP-only and holds a JWT that expires after 7 days. In production it is `Secure` and `SameSite=None`. Locally it is `SameSite=Lax`.
 4. `userAuth` in [auth.middleware.js](../backend/src/middleware/auth.middleware.js) reads the cookie, loads the user and answers 401 if any step fails.
 5. `POST /api/user/demo-login` opens a session for the account named by `DEMO_EMAIL` without a password. That account cannot be deleted or have its password changed.
-6. `GET /api/user/service-token` gives a signed-in user the token for the interview and emotion services.
+6. `GET /api/user/service-token` gives a signed-in user the token for the interview service.
 7. `DELETE /api/user/delete` removes the account with its resumes, job descriptions, ATS results and interviews.
 
 ## Data model
@@ -97,6 +98,6 @@ The camera feed is only shown to the candidate. It is not uploaded or recorded.
 | ATS rubric, judgements and feedback | `GROQ_MODEL`, default `openai/gpt-oss-120b` | Structured JSON, temperature 0, seed 7, low reasoning effort; 2500, 3000 and 2200 tokens |
 | ATS score | Calculated by code | Weighted parts; see [Resumes and the Resume Analyzer](resume-and-ats.md#what-the-score-means) |
 | ATS semantic similarity (optional) | `all-MiniLM-L6-v2` | Only with `ATS_SEMANTIC=1`; cosine 0.15 to 0.65 maps to 0 to 100 |
-| Voice emotion | `model3.h5`, `model4.h5`, `model_mw.h5` | MFCC features |
+| Voice emotion | `model3.h5`, run in the browser | 40 MFCCs of the first 91 frames; see [Voice analysis](voice-analysis.md) |
 
 `groqJson.js` sizes the parsing calls for a limit of 8,000 tokens per minute on Groq's free tier.

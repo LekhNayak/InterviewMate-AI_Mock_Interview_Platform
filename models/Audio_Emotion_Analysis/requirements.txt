@@ -1,20 +1,10 @@
-flask==2.3.3
-flask-cors==4.0.0
-werkzeug==2.3.7
-gunicorn>=21.2.0
-PyJWT>=2.8.0
-python-dotenv>=1.0.0
-
-# Compatible packages
+# Reference and test tools for the browser voice analysis (see README.md). Not deployed.
+# The fixtures in frontend/src/lib/voice/__tests__ were made with these exact versions.
 numpy==1.26.4
-pandas==2.1.4
-matplotlib==3.8.2
-Pillow==10.1.0
-opencv-python-headless==4.9.0.80
 librosa==0.10.1
-pydub==0.25.1
+soxr==1.1.0
+soundfile>=0.12.1
 imageio-ffmpeg==0.5.1
-
-# TensorFlow — plain package, not tensorflow-cpu: only this one ships an
-# aarch64 wheel, which Oracle's Ampere A1 (ARM) needs. Resolves CPU-only on ARM.
+h5py>=3.10
+# Runs model3.h5 as the reference for the TypeScript model. Plain tensorflow also has an ARM64 wheel.
 tensorflow==2.20.0

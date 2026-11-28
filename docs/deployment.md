@@ -1,22 +1,21 @@
 # Deployment
 
-The frontend, the Express API, the interview service and the ATS service run on Vercel. The emotion service runs in Docker on one server, behind Caddy, which gets HTTPS certificates automatically. `render.yaml` describes an alternative on Render.
+The frontend, the Express API, the interview service and the ATS service run on Vercel. The voice emotion reading runs in the browser, as part of the frontend, so it needs no server. The ATS service can also run in Docker on one server, behind Caddy, which gets HTTPS certificates automatically. `render.yaml` describes an alternative on Render.
 
 | Hostname | Runs on | Service |
 |---|---|---|
-| `interviewmate.lekh.online` | Vercel | Frontend |
+| `interviewmate.lekh.online` | Vercel | Frontend, including the voice analysis |
 | `interview-backend.lekh.online` | Vercel | Express API |
 | `interview-service.lekh.online` | Vercel | Interview service, called by the browser |
-| `emotion.lekh.online` | Server | Emotion service, called by the browser |
 | `ats.lekh.online` | Vercel | ATS service, called only by the API |
 
-Set them up in this order: the server and the interview service, then the API, then the frontend. Each step needs the URLs of the one before it.
+Set them up in this order: the interview service and the ATS service, then the API, then the frontend. Each step needs the URLs of the one before it.
 
-The interview works without the other two services. Without the emotion service the feedback has no voice reading, and without the ATS service the Resume Analyzer fails.
+The interview works without the ATS service. Without it, the Resume Analyzer fails.
 
-## The server: ATS and emotion services
+## Optional: the ATS service on a server
 
-These steps use an Oracle Cloud ARM machine. Any Linux server with Docker and about 4 GB of memory works the same way from step 4.
+Skip this section if the ATS service runs on Vercel. These steps use an Oracle Cloud ARM machine. Any Linux server with Docker and about 4 GB of memory works the same way from step 4.
 
 ### 1. Create the machine
 
@@ -28,7 +27,7 @@ Save the SSH private key when prompted. You cannot download it again.
 
 ### 2. Point DNS at the machine
 
-Add two A records with the instance's public IP: `emotion` and `ats`.
+Add an A record named `ats` with the instance's public IP.
 
 Do this before step 6. Caddy requests certificates when it starts, and the request fails if the names do not resolve yet.
 
@@ -70,13 +69,12 @@ Create the `.env` files from each service's `exampleENV.txt`. They are gitignore
 | File | Variables |
 |---|---|
 | `models/Resume ATS and JD/api_service/.env` | `GROQ_API_KEY`, `GROQ_MODEL`, `SERVICE_TOKEN_SECRET` |
-| `models/Audio_Emotion_Analysis/.env` | `SERVICE_TOKEN_SECRET` |
 
-Make one `SERVICE_TOKEN_SECRET` with `openssl rand -hex 32` and use it in both files, on the interview service and on the API in Vercel. Do not leave it empty. The services are on the internet, and without it anyone can use them, and your Groq and Sarvam keys with them.
+Make one `SERVICE_TOKEN_SECRET` with `openssl rand -hex 32` and use it in that file, on the interview service and on the API in Vercel. Do not leave it empty. The services are on the internet, and without it anyone can use them, and your Groq and Sarvam keys with them.
 
 `docker-compose.yml` sets `PORT`, and its value overrides those files.
 
-Edit `deploy/Caddyfile` and `deploy/keepalive.sh` if you use hostnames other than `emotion` and `ats` under `lekh.online`.
+Edit `deploy/Caddyfile` and `deploy/keepalive.sh` if you use a hostname other than `ats.lekh.online`.
 
 ### 6. Start
 
@@ -85,13 +83,12 @@ cd deploy
 docker compose up -d --build --remove-orphans
 ```
 
-`--remove-orphans` stops the API container if an older version of this file ran it here. The optional `.env` of the emotion service needs Docker Compose 2.24 or later.
+`--remove-orphans` stops containers that older versions of this file ran here: the API and the emotion service.
 
-The first build is slow because TensorFlow and PyTorch are large. Watch it with `docker compose logs -f`, then check your own hostnames:
+The first build is slow because the image includes PyTorch for the optional embedding engine. Watch it with `docker compose logs -f`, then check your own hostname:
 
 ```bash
 curl https://ats.example.com/api/health
-curl https://emotion.example.com/api/health
 curl -X POST https://ats.example.com/api/analyze
 ```
 
@@ -139,7 +136,7 @@ Each request may run in a different instance, so the service keeps nothing on di
 
 ## Vercel: the ATS service
 
-The same setup as the interview service. [api/index.py](../models/Resume%20ATS%20and%20JD/api_service/api/index.py) exposes the app, and `vercel.json` sets the install command, sends every path to it and leaves the optional `semantic/` engine out of the function.
+Vercel finds the Flask `app` in [main.py](../models/Resume%20ATS%20and%20JD/api_service/main.py) by itself and passes it every path unchanged, so this service needs no rewrite and no `api/index.py`. `vercel.json` sets the install command and leaves the optional `semantic/` engine out of the function. Do not add a rewrite: Vercel would still run `main.py`, which then sees the rewritten path and answers 404.
 
 1. Import the repository as a new Vercel project. Set the root directory to `models/Resume ATS and JD/api_service` and the framework preset to **Other**.
 2. Add `GROQ_API_KEY` (and backup keys `GROQ_API_KEY_2`, ...), `GROQ_MODEL` = `openai/gpt-oss-120b`, and `SERVICE_TOKEN_SECRET`, the same value as on the API.
@@ -203,7 +200,6 @@ Import the repository again as a second project, with `frontend` as the root dir
 ```
 VITE_API_BASE_URL=https://api.example.com/api
 VITE_INTERVIEW_API=https://interview.example.com/api
-VITE_EMOTION_API=https://emotion.example.com/api
 ```
 
 They are built into the bundle, so redeploy after changing them. `frontend/turbo.json` passes every `VITE_*` variable to the build; a variable with another prefix would not reach it. `vercel.json` sends every path to the app so that page reloads work.
@@ -219,16 +215,26 @@ cd ~/interviewmate && git pull
 cd deploy && docker compose up -d --build --remove-orphans
 ```
 
+### Switching off the old emotion service
+
+Earlier versions ran the voice analysis as a separate emotion service. If you deployed it, it is no longer called once the new frontend is live:
+
+1. On the server, pull and run `docker compose up -d --build --remove-orphans` as above. That stops the `emotion` container, and Caddy stops serving `emotion.lekh.online`.
+2. Delete the `emotion` DNS record.
+3. Remove `VITE_EMOTION_API` from the frontend project on Vercel.
+4. On Render, delete `interviewmate-emotion-service` if it exists. Removing it from `render.yaml` does not delete it.
+
 ## Notes
 
 - Live interview sessions are deleted from MongoDB 7 days after they start. Finished interviews are saved by the API as Interviews and stay.
-- The API signs a 5-minute token for each ATS request. The browser gets 3-hour tokens for the interview and emotion services.
+- The API signs a 5-minute token for each ATS request. The browser gets 3-hour tokens for the interview service.
+- When an interview starts, the browser downloads the voice analysis files, about 1.3 MB (the model weights and the resampler). They have hashed names under `/assets/`, so browsers keep them in their cache.
 - To run the API in Docker yourself, build from the repository root: `docker build -f backend/Dockerfile .` The Dockerfile uses `turbo prune` to install only what the backend needs.
 
 ## Render
 
-`render.yaml` creates the API and the three services on Render's free plan. `interviewmate-emotion-service` is built from its Dockerfile, the others run natively.
+`render.yaml` creates the API and the two Python services on Render's free plan. All of them run natively.
 
 - Set the keys marked `sync: false` in the dashboard, with the same `SERVICE_TOKEN_SECRET` on all four services.
 - Set `ML_SERVER` on the backend to the full URL of the ATS service after its first deploy.
-- The ATS and emotion services are a tight fit in 512 MB of memory. The ATS service may run out on the first analysis, and the emotion service while it starts.
+- The ATS service is a tight fit in 512 MB of memory and may run out on the first analysis.

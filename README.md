@@ -61,7 +61,7 @@ These were taken from the app running locally with fictional data and a drawing 
 
 ## Architecture
 
-The browser talks to an Express API for accounts and saved data, and directly to two Python services during an interview, using a token from the API. A third Python service scores resumes and is called only by the API.
+The browser talks to an Express API for accounts and saved data, and directly to the Python interview service during an interview, using a token from the API. A second Python service scores resumes and is called only by the API. The voice emotion reading is calculated in the browser.
 
 ```mermaid
 flowchart LR
@@ -69,7 +69,7 @@ flowchart LR
 
     browser -->|"JWT cookie"| api["Express API"]
     browser -->|"short-lived token"| interview["Interview service"]
-    browser -->|"short-lived token"| emotion["Emotion service"]
+    browser --> voice["Voice analysis<br/>in a Web Worker"]
 
     api --> mongo[("MongoDB")]
     api --> ext["Groq, Cloudinary,<br/>Gmail, SerpApi"]
@@ -77,7 +77,7 @@ flowchart LR
     ats --> atsx["Groq"]
     interview --> ai["Groq LLM and Whisper,<br/>Sarvam speech"]
     interview --> disk[("JSON and WAV<br/>files on disk")]
-    emotion --> keras["Keras models"]
+    voice --> keras["Keras model weights,<br/>libsoxr in WebAssembly"]
 ```
 
 One interview, with what happens when an outside service fails:
@@ -116,9 +116,9 @@ The browser then saves the transcript, feedback and averaged voice reading throu
 | API | Express 5, Mongoose 8, JWT in an HTTP-only cookie, bcrypt, Multer 2, Nodemailer 10 |
 | Interview service | Python 3.11, Flask, Groq (`qwen/qwen3.8-27b`, `whisper-large-v3-turbo`), Sarvam `bulbul:v3` |
 | ATS service | Flask, pypdf, Groq (`openai/gpt-oss-120b`). Optional: sentence-transformers (`all-MiniLM-L6-v2`) and ChromaDB |
-| Emotion service | Flask, TensorFlow 2.20, librosa |
+| Voice analysis | TypeScript in a Web Worker: the original Keras model's weights, librosa's MFCC and pitch steps, libsoxr compiled to WebAssembly. Tested against the old Python service with Vitest. |
 | Storage | MongoDB, Cloudinary |
-| Hosting | Vercel for the frontend, the API, the interview service and the ATS service. Docker Compose and Caddy on one server for the emotion service, or Render. |
+| Hosting | Vercel for the frontend, the API, the interview service and the ATS service. Optionally Docker Compose and Caddy on one server for the ATS service, or Render. |
 
 ## Quick start
 
@@ -169,19 +169,21 @@ If a step fails, see [Troubleshooting](docs/troubleshooting.md).
 | [Mock interviews](docs/mock-interviews.md) | Using them, session states, failures |
 | [Resumes and the Resume Analyzer](docs/resume-and-ats.md) | Parsing, scoring and the analysis flow |
 | [Job search](docs/job-search.md) | How results are matched and paged |
-| [Emotion service](docs/emotion-service.md) | Standalone voice analysis API |
+| [Voice analysis](docs/voice-analysis.md) | How the voice reading runs in the browser and how it is tested |
 | [Deployment](docs/deployment.md) | Vercel, Docker Compose on Oracle Cloud, Render |
 | [Troubleshooting](docs/troubleshooting.md) | Common errors and fixes |
 
 ## Honest limits
 
-- **Not security reviewed.** Do not upload anything confidential. The interview, emotion and ATS services check for a login only when `SERVICE_TOKEN_SECRET` is set.
+- **Not security reviewed.** Do not upload anything confidential. The interview and ATS services check for a login only when `SERVICE_TOKEN_SECRET` is set.
 - **Scores are estimates.** Feedback comes from a language model. The ATS score is calculated from requirement evidence, keywords and format checks, modelled on how applicant tracking systems screen, but it is not the result of any specific ATS. Neither has been measured for accuracy.
-- **Voice emotion is experimental.** The models' accuracy has not been measured here, and the reading does not affect your score.
+- **Voice emotion is experimental.** The model's accuracy has not been measured here, it reads only the first 2 seconds or so of each answer, and the reading does not affect your score. The browser version gives the same results as the old server, including the pitch value, which is half the real pitch; see [Voice analysis](docs/voice-analysis.md#known-limits).
 - **Video is not recorded.** The camera is only a mirror for you.
 - **Live sessions are files on one server.** The interview service does not scale past one process.
 - **Desktop, light theme and PDF only.** Pages are laid out for desktop screens, and other resume formats are not parsed.
-- **There are no automated tests.**
+- **Automated tests cover only the voice analysis** (`npm test -w frontend`).
+
+The browser resamples audio with libsoxr, which is licensed under the LGPL 2.1 or later. Its notice and license are in [frontend/public/licenses/soxr](frontend/public/licenses/soxr).
 
 ## Author
 

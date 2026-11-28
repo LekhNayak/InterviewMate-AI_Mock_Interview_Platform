@@ -6,12 +6,12 @@ import { summarizeEmotions } from "@/lib/emotion";
 import { errorMessage } from "@/lib/errors";
 import { serviceAuthHeaders } from "@/lib/serviceToken";
 import { invalidate, queryKeys } from "@/lib/queries";
+import { analyzeVoice, prepareVoiceAnalysis, releaseVoiceAnalysis } from "@/lib/voice";
 import type { EmotionResult, EmotionSummary } from "@/types";
 
 
 
 const API_BASE_URL = import.meta.env.VITE_INTERVIEW_API;
-const API_BASE_URL2 = import.meta.env.VITE_EMOTION_API;
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL;
 const EMOTION_WAIT_MS = 8000;
 
@@ -241,6 +241,9 @@ export default function WebinarUI() {
         return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
+    // The voice analysis worker holds the model and the resampler. Free them when the page closes.
+    useEffect(() => releaseVoiceAnalysis, []);
+
     // --- Media Setup and Cleanup (Initial useEffect) ---
     useEffect(() => {
         let left = false;
@@ -403,26 +406,12 @@ export default function WebinarUI() {
     // Stops the recorder, which then transcribes what it captured.
     const stopRecording = () => recorderRef.current?.stop();
 
-    // Runs beside the interview: a failure here must never interrupt it.
+    // Runs beside the interview, in a background worker: a failure here must never interrupt it.
     const analyzeEmotion = async (audioBlob: Blob) => {
-        const formData = new FormData();
-        formData.append("file", audioBlob, "user_answer.webm");
-        formData.append("model_type", "mfccs");
-        formData.append("emotions_3", "true");
-        formData.append("emotions_6", "true");
-
         try {
-            const res = await fetch(`${API_BASE_URL2}/predict`, {
-                method: "POST",
-                headers: await serviceAuthHeaders(),
-                body: formData,
-            });
-
-            const data = await res.json();
-            if (res.ok && data.predictions) emotionsRef.current.push(data.predictions);
-            else console.error("Emotion API error:", data);
+            emotionsRef.current.push(await analyzeVoice(audioBlob));
         } catch (err) {
-            console.error("Emotion analysis failed:", err);
+            console.error("Voice analysis failed:", err);
         }
     };
 
@@ -479,6 +468,7 @@ export default function WebinarUI() {
         setLiveTime(0);
         emotionsRef.current = [];
         pendingEmotionsRef.current = [];
+        prepareVoiceAnalysis();
         try {
             const response = await fetch(`${API_BASE_URL}/start_interview`, {
                 method: "POST",
@@ -607,7 +597,7 @@ export default function WebinarUI() {
             const data = await response.json();
 
             if (response.ok) {
-                // Give late voice results a moment, but never hold the feedback for a slow service.
+                // Give late voice results a moment, but never hold the feedback for a slow analysis.
                 await Promise.race([
                     Promise.allSettled(pendingEmotionsRef.current),
                     new Promise(resolve => setTimeout(resolve, EMOTION_WAIT_MS)),

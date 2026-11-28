@@ -110,7 +110,7 @@ export interface JobDescription {
     createdAt: string;
 }
 
-// One answer, as returned by the emotion service.
+// One answer, as returned by the voice analysis (src/lib/voice).
 export interface EmotionPrediction {
     emotion: string;
     confidence: number;

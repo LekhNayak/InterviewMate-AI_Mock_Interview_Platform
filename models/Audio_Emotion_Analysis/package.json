@@ -1,9 +1,0 @@
-{
-  "name": "emotion-service",
-  "private": true,
-  "description": "Flask emotion service. Lets Turborepo set it up and run it; see scripts/python.mjs.",
-  "scripts": {
-    "setup": "node ../../scripts/python.mjs setup",
-    "dev": "node ../../scripts/python.mjs main.py"
-  }
-}

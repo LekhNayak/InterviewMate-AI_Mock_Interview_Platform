@@ -40,7 +40,7 @@ services:
       # Account opened by the demo button. Leave empty to hide the button.
       - key: DEMO_EMAIL
         sync: false
-      # Same value on the backend, interview and emotion services.
+      # Same value on the backend, interview and ATS services.
       - key: SERVICE_TOKEN_SECRET
         sync: false
 
@@ -85,20 +85,5 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
-      - key: SERVICE_TOKEN_SECRET
-        sync: false
-
-  # Flask emotion-recognition service — TensorFlow + OpenCV + librosa need system libs
-  # (libgl1, libsndfile1) that Render's native Python builder can't install, hence Docker.
-  # main.py loads all three Keras models at import, so TensorFlow's footprint lands at
-  # startup — this is the service most likely to exceed the free tier's 512MB.
-  - type: web
-    name: interviewmate-emotion-service
-    runtime: docker
-    plan: free
-    dockerfilePath: ./models/Audio_Emotion_Analysis/Dockerfile
-    dockerContext: ./models/Audio_Emotion_Analysis
-    healthCheckPath: /api/health
-    envVars:
       - key: SERVICE_TOKEN_SECRET
         sync: false

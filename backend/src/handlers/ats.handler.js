@@ -60,7 +60,7 @@ async function callMLService({ jdText, jobRole, style, rubric }, pdfUrl, userId)
     form.append('file', Buffer.from(pdfRes.data), { filename: 'resume.pdf', contentType: 'application/pdf' });
 
     // The ATS service is public when the API runs on Vercel, so it gets the same
-    // kind of token the browser sends to the interview and emotion services.
+    // kind of token the browser sends to the interview service.
     const token = signServiceToken(userId, '5m');
     const headers = form.getHeaders(token ? { Authorization: `Bearer ${token}` } : {});
 

@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-audio/
-README.md
-test_api.py
-.env
-exampleENV.txt
-package.json

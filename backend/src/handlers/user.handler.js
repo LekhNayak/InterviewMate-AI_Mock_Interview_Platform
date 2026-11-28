@@ -167,9 +167,9 @@ const demoLogin = async (req, res) => {
     }
 };
 
-// Short-lived token the browser sends to the interview and emotion services.
-// `token` is null when SERVICE_TOKEN_SECRET is not set, and the services then
-// accept requests without one.
+// Short-lived token the browser sends to the interview service.
+// `token` is null when SERVICE_TOKEN_SECRET is not set, and the service then
+// accepts requests without one.
 const serviceToken = (req, res) => {
     const expiresIn = 3 * 60 * 60;
     const token = signServiceToken(req.user._id, expiresIn);

@@ -1,0 +1,5 @@
+# Binary files of the voice analysis (model weights, WebAssembly, test fixtures). Never convert line endings.
+*.bin binary
+*.wasm binary
+*.f32 binary
+*.h5 binary

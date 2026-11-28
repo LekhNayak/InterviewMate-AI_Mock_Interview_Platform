@@ -36,7 +36,7 @@ The first message is your introduction. After that the interviewer asks one ques
 
 When the interviewer closes the interview, the feedback is fetched and saved. Choose **View Feedback** for a rating out of 10, a summary, strengths, areas to improve and next steps. If fetching it fails, **Get Feedback** tries again.
 
-If you recorded answers and the emotion service is running, the feedback also shows your speaking style and emotions, averaged over those answers. This does not change your score.
+If you recorded answers, the feedback also shows your speaking style and emotions, averaged over those answers. Your browser calculates them while the interview goes on, so the recordings are not sent anywhere for this. It does not change your score. See [Voice analysis](voice-analysis.md).
 
 Saved interviews are under **Simulations**, in the **Reviews** folder. Reviews also shows four scores (technical accuracy, communication, depth, problem solving), the voice reading and the transcript.
 
@@ -71,7 +71,7 @@ The service ends the interview when the question limit is reached. It also ends 
 |---|---|
 | Camera or microphone refused | An **Enable Media** screen. The interview cannot start. |
 | Transcription fails | A message in the chat. Type the answer instead. |
-| Emotion service down | The feedback has no voice section |
+| The browser cannot decode a recording, or the voice analysis files do not load | That answer has no voice reading. With none, the feedback has no voice section. |
 | Sarvam fails or has no key | The reply arrives as text without audio. |
 | Groq fails on a question | The error is shown in the chat and your answer goes back into the box. Send it again. |
 | Feedback is cut off or is not JSON | The service asks the model once more. If that fails too, use **Get Feedback**. |

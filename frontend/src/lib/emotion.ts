@@ -23,7 +23,7 @@ export const summarizeEmotions = (results: EmotionResult[]): EmotionSummary | un
 
     return {
         answers: results.length,
-        // Same threshold as the emotion service.
+        // Same threshold as each answer's reading (lib/voice/speaking.ts).
         speaking_style: score === undefined ? undefined : { label: score >= 0.5 ? "confident" : "anxious", score },
         emotions_3: averagePrediction(results.map((r) => r.emotions_3).filter(present)),
         emotions_6: averagePrediction(results.map((r) => r.emotions_6).filter(present)),

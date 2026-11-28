@@ -7,7 +7,8 @@ Local base URLs:
 | Express API | `http://localhost:8000/api` |
 | Interview service | `http://localhost:5000/api` |
 | ATS service | `http://localhost:6050/api` |
-| Emotion service | `http://localhost:8090/api` |
+
+The voice emotion reading has no API. It runs in the browser; see [Voice analysis](voice-analysis.md).
 
 In the Express tables, **Login** means the `token` cookie is required. Browser calls must send `credentials: "include"`. Without a valid cookie the answer is 401.
 
@@ -20,7 +21,7 @@ In the Express tables, **Login** means the `token` cookie is required. Browser c
 | POST | `/user/login` | No | Set the cookie. Body: `email`, `password`. |
 | GET | `/user/demo` | No | Whether the demo account is available |
 | POST | `/user/demo-login` | No | Set the cookie for the demo account |
-| GET | `/user/service-token` | Yes | Token for the interview and emotion services, or `null` when `SERVICE_TOKEN_SECRET` is not set |
+| GET | `/user/service-token` | Yes | Token for the interview service, or `null` when `SERVICE_TOKEN_SECRET` is not set |
 | GET | `/user/profile` | Yes | Current user |
 | PUT | `/user/update` | Yes | Update name, age, gender, skills, interests and profile URLs |
 | PUT | `/user/logout` | No | Clear the cookie |
@@ -151,7 +152,3 @@ curl -X POST http://localhost:6050/api/analyze -F "job_role=Data Analyst" -F "fi
 ```
 
 In Windows PowerShell use `curl.exe` instead of `curl`.
-
-## Emotion service endpoints
-
-See [Emotion service](emotion-service.md#endpoints).

@@ -19,7 +19,6 @@ set -uo pipefail
 BURN_SECONDS="${BURN_SECONDS:-60}"
 HOSTS=(
 	"https://ats.lekh.online/api/health"
-	"https://emotion.lekh.online/api/health"
 )
 
 for url in "${HOSTS[@]}"; do

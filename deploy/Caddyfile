@@ -1,17 +1,10 @@
 # Caddy obtains and renews Let's Encrypt certificates automatically — no certbot,
-# no renewal cron. Each domain below must already have an A record pointing at
+# no renewal cron. The domain below must already have an A record pointing at
 # this VM's public IP before `docker compose up`, or the certificate request fails.
 #
 # The API (interview-backend.lekh.online) and the interview service
 # (interview-service.lekh.online) are on Vercel, not here.
-# Replace these two hostnames with your own if you use different subdomains.
-
-emotion.lekh.online {
-	request_body {
-		max_size 50MB
-	}
-	reverse_proxy emotion:8090
-}
+# Replace this hostname with your own if you use a different subdomain.
 
 # Called only by the API on Vercel, with a short-lived token, to score a resume.
 ats.lekh.online {

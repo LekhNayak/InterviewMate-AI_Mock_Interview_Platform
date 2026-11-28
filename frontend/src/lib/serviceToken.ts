@@ -3,8 +3,8 @@ const API = import.meta.env.VITE_API_BASE_URL;
 let cached: { token: string; expiresAt: number } | null = null;
 
 /**
- * Authorization header for the interview and emotion services.
- * Empty when the backend does not issue tokens, in which case the services do not ask for one.
+ * Authorization header for the interview service.
+ * Empty when the backend does not issue tokens, in which case the service does not ask for one.
  */
 export const serviceAuthHeaders = async (): Promise<Record<string, string>> => {
     if (!cached || cached.expiresAt < Date.now() + 60_000) {

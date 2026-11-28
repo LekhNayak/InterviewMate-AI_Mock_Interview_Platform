@@ -1,10 +1,11 @@
-# InterviewMate — the ATS and emotion services on one server, behind Caddy.
-# The frontend, the Express API and the interview service run on Vercel.
+# InterviewMate — the ATS service on one server, behind Caddy. Optional: the ATS service also runs on Vercel.
+# The frontend, the Express API and the interview service run on Vercel. The voice analysis runs in the browser.
 #
-# Run from this directory:  docker compose up -d --build
+# Run from this directory:  docker compose up -d --build --remove-orphans
+# (--remove-orphans also stops the emotion service container that older versions of this file ran.)
 #
-# Each service reads its secrets from its own .env file (same layout as local
-# dev). Values under `environment:` override anything in those files.
+# The service reads its secrets from its own .env file (same layout as local
+# dev). Values under `environment:` override anything in that file.
 
 services:
   ats:
@@ -13,17 +14,6 @@ services:
     env_file: "../models/Resume ATS and JD/api_service/.env"
     environment:
       PORT: 6050
-    restart: unless-stopped
-
-  emotion:
-    build:
-      context: ../models/Audio_Emotion_Analysis
-    env_file:
-      # Optional: holds SERVICE_TOKEN_SECRET.
-      - path: ../models/Audio_Emotion_Analysis/.env
-        required: false
-    environment:
-      PORT: 8090
     restart: unless-stopped
 
   caddy:
@@ -38,7 +28,6 @@ services:
     restart: unless-stopped
     depends_on:
       - ats
-      - emotion
 
 volumes:
   caddy_data:

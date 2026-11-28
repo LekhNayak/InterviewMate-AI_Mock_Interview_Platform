@@ -75,7 +75,7 @@ app.use((err, req, res, next) => {
 });
 
 if (!process.env.SERVICE_TOKEN_SECRET) {
-    console.log("⚠️  SERVICE_TOKEN_SECRET is not set: the interview, emotion and ATS services accept requests without a login".yellow);
+    console.log("⚠️  SERVICE_TOKEN_SECRET is not set: the interview and ATS services accept requests without a login".yellow);
 }
 
 // `node src/index.js` (local, Docker) starts a server. Vercel imports this file

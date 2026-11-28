@@ -12,7 +12,6 @@
 | Vite starts on port 8081 and requests fail | Another program holds port 8080, often an earlier `npm run dev`. The API only accepts the app from port 8080, so stop the other one. |
 | `Cannot find module` after pulling | Dependencies changed. Run `npm install` in the repository root, not in a package folder. |
 | Vite fails on an old Node version | Use Node 20.19 or later, or 22.13 or later. |
-| Emotion service cannot open `model3.h5` | Run it from `models/Audio_Emotion_Analysis`. |
 | Port 5000 is taken | Set another `PORT` for the interview service and update `VITE_INTERVIEW_API`. If `PORT` is missing from `backend/.env`, the backend uses 5000 too. |
 
 ## Signing in
@@ -43,7 +42,7 @@
 | Replies have no sound | Check `SARVAM_API_KEY`, then the interview service log for `Sarvam TTS failed`. |
 | `The feedback could not be generated` | The model did not return valid JSON twice. Choose **Get Feedback** to try again. |
 | The interview is missing from Reviews | It is saved when the feedback arrives. Stay on the page until **View Feedback** appears. |
-| No voice section in the feedback | No answer was recorded, or the emotion service is not running. |
+| No voice section in the feedback | No answer was recorded, or the browser could not analyse the recordings. The browser console shows `Voice analysis failed` with the reason. |
 
 ## ATS and jobs
 
