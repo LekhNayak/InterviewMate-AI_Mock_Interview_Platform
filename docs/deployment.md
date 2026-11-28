@@ -7,7 +7,7 @@ The frontend, the Express API, the interview service and the ATS service run on 
 | `interviewmate.lekh.online` | Vercel | Frontend, including the voice analysis |
 | `interview-backend.lekh.online` | Vercel | Express API |
 | `interview-service.lekh.online` | Vercel | Interview service, called by the browser |
-| `ats.lekh.online` | Vercel | ATS service, called only by the API |
+| `interviewmate-ats.lekh.online` | Vercel | ATS service, called only by the API |
 
 Set them up in this order: the interview service and the ATS service, then the API, then the frontend. Each step needs the URLs of the one before it.
 
@@ -140,9 +140,9 @@ Vercel finds the Flask `app` in [main.py](../models/Resume%20ATS%20and%20JD/api_
 
 1. Import the repository as a new Vercel project. Set the root directory to `models/Resume ATS and JD/api_service` and the framework preset to **Other**.
 2. Add `GROQ_API_KEY` (and backup keys `GROQ_API_KEY_2`, ...), `GROQ_MODEL` = `openai/gpt-oss-120b`, and `SERVICE_TOKEN_SECRET`, the same value as on the API.
-3. Under **Domains**, add `ats.lekh.online`.
+3. Under **Domains**, add `interviewmate-ats.lekh.online`.
 4. Check it: `curl https://ats.example.com/api/health` answers `"status": "ok"` and `"semantic": false`.
-5. Set `ML_SERVER` on the API to `https://ats.lekh.online` and redeploy the API.
+5. Set `ML_SERVER` on the API to `https://interviewmate-ats.lekh.online` and redeploy the API.
 
 An analysis takes about 10 seconds and makes two or three Groq calls. With one Groq key, several analyses in a row can wait on the free tier's per-minute token limit; backup keys avoid that.
 
@@ -165,7 +165,7 @@ Vercel runs the Express app in `backend/src/index.js` as one function. The file 
 | Variable | Value |
 |---|---|
 | `NODE_ENV` | `production`. Makes the login cookie `Secure` and `SameSite=None`. |
-| `ML_SERVER` | `https://ats.lekh.online`, with no trailing slash |
+| `ML_SERVER` | `https://interviewmate-ats.lekh.online`, with no trailing slash |
 | `SERVICE_TOKEN_SECRET` | The same value as on the Oracle machine |
 | `MONGO_URI`, `SECRET_KEY` | Atlas connection string, and a long random string that signs the login cookie |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Groq key and `openai/gpt-oss-120b` |
